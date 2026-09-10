@@ -19,7 +19,7 @@ class _AuthDialogState extends State<AuthDialog> {
     final p = passCtrl.text.trim();
 
     if (u.isEmpty || p.isEmpty) {
-      setState(() => errorMessage = 'Vui lòng nhập đầy đủ tên và mật khẩu!');
+      setState(() => errorMessage = globalAppState.t('auth_empty_fields'));
       return;
     }
 
@@ -36,7 +36,7 @@ class _AuthDialogState extends State<AuthDialog> {
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(isLoginMode ? 'Đăng nhập thành công! Chào $u' : 'Tạo tài khoản thành công!'),
+          content: Text(isLoginMode ? globalAppState.t('auth_login_success') : globalAppState.t('auth_register_success')),
           backgroundColor: Colors.green,
           duration: const Duration(seconds: 2),
         ),
@@ -48,7 +48,7 @@ class _AuthDialogState extends State<AuthDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: Text(
-        isLoginMode ? 'Đăng Nhập Tài Khoản' : 'Đăng Ký Thành Viên Mới',
+        isLoginMode ? globalAppState.t('auth_login_title') : globalAppState.t('auth_register_title'),
         style: const TextStyle(fontWeight: FontWeight.bold),
       ),
       content: SizedBox(
@@ -77,20 +77,20 @@ class _AuthDialogState extends State<AuthDialog> {
             ],
             TextField(
               controller: userCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Tên đăng nhập',
-                prefixIcon: Icon(Icons.person_outline),
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: globalAppState.t('username'),
+                prefixIcon: const Icon(Icons.person_outline),
+                border: const OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: passCtrl,
               obscureText: true,
-              decoration: const InputDecoration(
-                labelText: 'Mật khẩu',
-                prefixIcon: Icon(Icons.lock_outline),
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: globalAppState.t('password'),
+                prefixIcon: const Icon(Icons.lock_outline),
+                border: const OutlineInputBorder(),
               ),
               onSubmitted: (_) => _submit(),
             ),
@@ -102,12 +102,12 @@ class _AuthDialogState extends State<AuthDialog> {
                   color: Colors.deepPurple.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(6),
                 ),
-                child: const Column(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Tài khoản mẫu có sẵn:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                    Text('• Admin: admin / 123 (Có toàn quyền quản trị)', style: TextStyle(fontSize: 12)),
-                    Text('• Độc giả: docgia1 / 123', style: TextStyle(fontSize: 12)),
+                    Text(globalAppState.t('sample_accounts'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                    const Text('• Admin: admin / 123 (Có toàn quyền quản trị)', style: TextStyle(fontSize: 12)),
+                    const Text('• Độc giả: docgia1 / 123', style: TextStyle(fontSize: 12)),
                   ],
                 ),
               ),
@@ -120,17 +120,17 @@ class _AuthDialogState extends State<AuthDialog> {
                     errorMessage = null;
                   });
                 },
-                child: Text(isLoginMode ? 'Chưa có tài khoản? Nhấn để Đăng Ký' : 'Đã có tài khoản? Nhấn để Đăng Nhập'),
+                child: Text(isLoginMode ? globalAppState.t('auth_login_title') : globalAppState.t('auth_register_title')),
               ),
             ),
           ],
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Hủy')),
+        TextButton(onPressed: () => Navigator.pop(context), child: Text(globalAppState.t('cancel'))),
         FilledButton(
           onPressed: _submit,
-          child: Text(isLoginMode ? 'Đăng Nhập' : 'Tạo Tài Khoản'),
+          child: Text(isLoginMode ? globalAppState.t('auth_login_button') : globalAppState.t('auth_register_button')),
         ),
       ],
     );

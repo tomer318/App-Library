@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'state/app_state.dart';
 import 'screens/screens.dart';
 import 'widgets/auth_dialog.dart';
+import 'widgets/settings_dialog.dart';
 
 void main() {
   runApp(const NovelPlatformApp());
@@ -35,11 +36,15 @@ class _NovelPlatformAppState extends State<NovelPlatformApp> {
         useMaterial3: true,
       ),
       darkTheme: ThemeData(
+        useMaterial3: true,
         brightness: Brightness.dark,
         colorSchemeSeed: Colors.deepPurple,
         scaffoldBackgroundColor: const Color(0xFF121212),
-        cardTheme: const CardThemeData(elevation: 2),
-        useMaterial3: true,
+        canvasColor: const Color(0xFF121212),
+        navigationBarTheme: NavigationBarThemeData(
+          backgroundColor: const Color(0xFF1E1E1E),
+          indicatorColor: Colors.deepPurple.withValues(alpha: 0.3),
+        ),
       ),
       home: const MainNavigationShell(),
     );
@@ -59,100 +64,203 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
   @override
   Widget build(BuildContext context) {
     final state = globalAppState;
-    final List<Widget> screens = [
-      const ExploreScreen(),
-      const FavoritesScreen(),
-      const ProfileScreen(),
-      if (state.currentUser?.role == 'admin') const AdminDashboardScreen(),
-    ];
 
-    if (_currentIndex >= screens.length) {
-      _currentIndex = 0;
-    }
+    // BỌC LISTENABLEBUILDER ĐỂ KHI ĐỔI NGÔN NGỮ LẬP TỨC RE-RENDER CẢ APPBAR LẪN BOTTOM BAR
+    return ListenableBuilder(
+      listenable: state,
+      builder: (context, _) {
+        final List<Widget> screens = [
+          const ExploreScreen(),
+          const FavoritesScreen(),
+          const ProfileScreen(),
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Row(
-          children: [
-            const Icon(Icons.auto_stories, color: Colors.deepPurpleAccent),
-            const SizedBox(width: 8),
-            Text(state.t('app_title'), style: const TextStyle(fontWeight: FontWeight.bold)),
-          ],
-        ),
-        actions: [
-          IconButton(
-            icon: Icon(state.themeMode == ThemeMode.light ? Icons.dark_mode_outlined : Icons.light_mode_outlined),
-            tooltip: 'Đổi nền Sáng / Tối',
-            onPressed: state.toggleTheme,
+          if (state.currentUser?.role == 'author')
+            const CreatorStudioScreen(),
+          if (state.currentUser?.role == 'admin')
+            const AdminDashboardScreen(),
+        ];
+
+        final List<NavigationDestination> navDestinations = [
+          NavigationDestination(
+            icon: const Icon(Icons.explore_outlined),
+            selectedIcon: const Icon(Icons.explore),
+            label: state.t('nav_explore'),
           ),
-          TextButton(
-            onPressed: state.toggleLanguage,
-            child: Text(
-              state.language.toUpperCase(),
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          NavigationDestination(
+            icon: const Icon(Icons.bookmark_outline),
+            selectedIcon: const Icon(Icons.bookmark),
+            label: state.t('nav_favorites'),
+          ),
+          NavigationDestination(
+            icon: const Icon(Icons.person_outline),
+            selectedIcon: const Icon(Icons.person),
+            label: state.t('nav_profile'),
+          ),
+          if (state.currentUser?.role == 'author')
+            NavigationDestination(
+              icon: const Icon(Icons.draw_outlined),
+              selectedIcon: const Icon(Icons.draw),
+              label: state.t('nav_studio'),
             ),
-          ),
-          const VerticalDivider(width: 20, indent: 15, endIndent: 15),
-          if (state.currentUser == null)
-            ElevatedButton.icon(
-              onPressed: () => showDialog(
-                context: context,
-                builder: (_) => const AuthDialog(),
-              ),
-              icon: const Icon(Icons.login, size: 18),
-              label: Text(state.t('login')),
-            )
-          else
-            PopupMenuButton<String>(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 14,
-                      backgroundColor: state.currentUser!.role == 'admin' ? Colors.redAccent : Colors.deepPurple,
-                      child: Text(state.currentUser!.username[0].toUpperCase(), style: const TextStyle(fontSize: 12, color: Colors.white)),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(state.currentUser!.username, style: const TextStyle(fontWeight: FontWeight.w600)),
-                  ],
-                ),
-              ),
-              onSelected: (val) {
-                if (val == 'logout') state.logout();
-              },
-              itemBuilder: (_) => [
-                PopupMenuItem(
-                  enabled: false,
-                  child: Text('Vai trò: ${state.currentUser!.role.toUpperCase()}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                ),
-                PopupMenuItem(
-                  value: 'logout',
-                  child: Row(
-                    children: [
-                      const Icon(Icons.logout, size: 18, color: Colors.red),
-                      const SizedBox(width: 8),
-                      Text(state.t('logout'), style: const TextStyle(color: Colors.red)),
-                    ],
+          if (state.currentUser?.role == 'admin')
+            NavigationDestination(
+              icon: const Icon(Icons.admin_panel_settings_outlined),
+              selectedIcon: const Icon(Icons.admin_panel_settings),
+              label: state.t('nav_admin'),
+            ),
+        ];
+
+        final safeIndex = _currentIndex >= screens.length ? 0 : _currentIndex;
+
+        return Scaffold(
+          appBar: AppBar(
+            titleSpacing: 12,
+            title: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.auto_stories, color: Colors.deepPurpleAccent),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    state.t('app_title'),
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
                   ),
                 ),
               ],
             ),
-          const SizedBox(width: 12),
-        ],
-      ),
-      body: screens[_currentIndex],
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _currentIndex,
-        onDestinationSelected: (idx) => setState(() => _currentIndex = idx),
-        destinations: [
-          NavigationDestination(icon: const Icon(Icons.explore_outlined), selectedIcon: const Icon(Icons.explore), label: state.t('nav_explore')),
-          NavigationDestination(icon: const Icon(Icons.bookmark_outline), selectedIcon: const Icon(Icons.bookmark), label: state.t('nav_favorites')),
-          NavigationDestination(icon: const Icon(Icons.person_outline), selectedIcon: const Icon(Icons.person), label: state.t('nav_profile')),
-          if (state.currentUser?.role == 'admin')
-            NavigationDestination(icon: const Icon(Icons.admin_panel_settings_outlined), selectedIcon: const Icon(Icons.admin_panel_settings), label: state.t('nav_admin')),
-        ],
-      ),
+            actions: [
+              if (MediaQuery.of(context).size.width < 600) ...[
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_vert),
+                  tooltip: state.t('settings'),
+                  onSelected: (val) {
+                    if (val == 'settings') {
+                      showDialog(context: context, builder: (_) => const SettingsDialog());
+                    } else if (val == 'theme') {
+                      state.toggleTheme();
+                    } else if (val == 'lang') {
+                      state.toggleLanguage();
+                    }
+                  },
+                  itemBuilder: (_) => [
+                    PopupMenuItem(
+                      value: 'settings',
+                      child: Row(
+                        children: [
+                          const Icon(Icons.settings_outlined, size: 20),
+                          const SizedBox(width: 10),
+                          Text(state.t('settings')),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'theme',
+                      child: Row(
+                        children: [
+                          Icon(state.themeMode == ThemeMode.light ? Icons.dark_mode_outlined : Icons.light_mode_outlined, size: 20),
+                          const SizedBox(width: 10),
+                          Text(state.themeMode == ThemeMode.light ? state.t('dark_mode') : state.t('light_mode')),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'lang',
+                      child: Row(
+                        children: [
+                          const Icon(Icons.language_outlined, size: 20),
+                          const SizedBox(width: 10),
+                          Text('${state.t('lang_label')}: ${state.language.toUpperCase()}'),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ] else ...[
+                IconButton(
+                  icon: const Icon(Icons.settings_outlined),
+                  tooltip: state.t('settings'),
+                  onPressed: () => showDialog(context: context, builder: (_) => const SettingsDialog()),
+                ),
+                IconButton(
+                  icon: Icon(state.themeMode == ThemeMode.light ? Icons.dark_mode_outlined : Icons.light_mode_outlined),
+                  tooltip: state.themeMode == ThemeMode.light ? state.t('dark_mode') : state.t('light_mode'),
+                  onPressed: state.toggleTheme,
+                ),
+                TextButton(
+                  onPressed: state.toggleLanguage,
+                  child: Text(
+                    state.language.toUpperCase(),
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                ),
+                const VerticalDivider(width: 16, indent: 15, endIndent: 15),
+              ],
+              if (state.currentUser == null)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8.0),
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    ),
+                    onPressed: () => showDialog(
+                      context: context,
+                      builder: (_) => const AuthDialog(),
+                    ),
+                    icon: const Icon(Icons.login, size: 16),
+                    label: Text(state.t('login'), style: const TextStyle(fontSize: 13)),
+                  ),
+                )
+              else
+                Padding(
+                  padding: const EdgeInsets.only(right: 8.0),
+                  child: PopupMenuButton<String>(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          CircleAvatar(
+                            radius: 14,
+                            backgroundColor: state.currentUser!.role == 'admin' ? Colors.redAccent : Colors.deepPurple,
+                            child: Text(state.currentUser!.username[0].toUpperCase(), style: const TextStyle(fontSize: 12, color: Colors.white)),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(state.currentUser!.username, style: const TextStyle(fontWeight: FontWeight.w600)),
+                        ],
+                      ),
+                    ),
+                    onSelected: (val) {
+                      if (val == 'logout') state.logout();
+                    },
+                    itemBuilder: (_) => [
+                      PopupMenuItem(
+                        enabled: false,
+                        child: Text('Vai trò: ${state.currentUser!.role.toUpperCase()}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                      ),
+                      PopupMenuItem(
+                        value: 'logout',
+                        child: Row(
+                          children: [
+                            const Icon(Icons.logout, size: 18, color: Colors.red),
+                            const SizedBox(width: 8),
+                            Text(state.t('logout'), style: const TextStyle(color: Colors.red)),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+          body: screens[safeIndex],
+          bottomNavigationBar: NavigationBar(
+            selectedIndex: safeIndex,
+            onDestinationSelected: (idx) => setState(() => _currentIndex = idx),
+            destinations: navDestinations,
+          ),
+        );
+      },
     );
   }
 }

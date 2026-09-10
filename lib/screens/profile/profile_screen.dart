@@ -9,165 +9,214 @@ class ProfileScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = globalAppState;
-    final user = state.currentUser;
 
-    if (user == null) {
-      return Center(
-        child: Card(
-          margin: const EdgeInsets.all(24),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 30),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.lock_person_outlined, size: 70, color: Colors.deepPurpleAccent),
-                const SizedBox(height: 16),
-                const Text('Bạn Chưa Đăng Nhập', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                const Text(
-                  'Vui lòng đăng nhập hoặc đăng ký tài khoản để đồng bộ tủ sách,\nlịch sử đọc và tùy chỉnh trang cá nhân.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.grey),
-                ),
-                const SizedBox(height: 24),
-                FilledButton.icon(
-                  onPressed: () => showDialog(context: context, builder: (_) => const AuthDialog()),
-                  icon: const Icon(Icons.login),
-                  label: const Text('Đăng Nhập Ngay'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
+    return ListenableBuilder(
+      listenable: state,
+      builder: (context, _) {
+        final user = state.currentUser;
 
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 700),
-        child: ListView(
-          padding: const EdgeInsets.all(20),
-          children: [
-            Card(
+        // 1. NẾU CHƯA ĐĂNG NHẬP: HIỂN THỊ YÊU CẦU ĐĂNG NHẬP
+        if (user == null) {
+          return Center(
+            child: Card(
+              margin: const EdgeInsets.all(24),
               child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Row(
+                padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 30),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    CircleAvatar(
-                      radius: 36,
-                      backgroundColor: user.role == 'admin' ? Colors.redAccent : Colors.deepPurple,
-                      child: Text(
-                        user.username[0].toUpperCase(),
-                        style: const TextStyle(fontSize: 28, color: Colors.white, fontWeight: FontWeight.bold),
-                      ),
+                    const Icon(Icons.lock_person_outlined, size: 70, color: Colors.deepPurpleAccent),
+                    const SizedBox(height: 16),
+                    Text(state.t('not_logged_in_title'), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Text(
+                      state.t('not_logged_in_desc'),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.grey),
                     ),
-                    const SizedBox(width: 20),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(user.username, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 4),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: user.role == 'admin' ? Colors.red.withValues(alpha: 0.2) : Colors.blue.withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              user.role.toUpperCase(),
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: user.role == 'admin' ? Colors.redAccent : Colors.blueAccent,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(user.bio, style: const TextStyle(color: Colors.grey)),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.edit_outlined),
-                      tooltip: 'Sửa thông tin',
-                      onPressed: () => _showEditProfileDialog(context, user),
+                    const SizedBox(height: 24),
+                    FilledButton.icon(
+                      onPressed: () => showDialog(context: context, builder: (_) => const AuthDialog()),
+                      icon: const Icon(Icons.login),
+                      label: Text(state.t('login_now')),
                     ),
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: 16),
-            Row(
+          );
+        }
+
+        // 2. KHI ĐÃ ĐĂNG NHẬP: HIỂN THỊ HỒ SƠ CHI TIẾT
+        return Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 700),
+            child: ListView(
+              padding: const EdgeInsets.all(20),
               children: [
-                Expanded(
-                  child: Card(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      child: Column(
-                        children: [
-                          Text('${state.favoriteStoryIds.length}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.deepPurpleAccent)),
-                          const SizedBox(height: 4),
-                          const Text('Truyện đã lưu', style: TextStyle(color: Colors.grey)),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            CircleAvatar(
+                              radius: 36,
+                              backgroundColor: user.role == 'admin'
+                                  ? Colors.redAccent
+                                  : (user.role == 'author' ? Colors.teal : Colors.deepPurple),
+                              child: Text(
+                                user.username[0].toUpperCase(),
+                                style: const TextStyle(fontSize: 28, color: Colors.white, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                            const SizedBox(width: 20),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(user.username, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                                  const SizedBox(height: 4),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: user.role == 'admin'
+                                          ? Colors.red.withValues(alpha: 0.2)
+                                          : (user.role == 'author'
+                                              ? Colors.teal.withValues(alpha: 0.2)
+                                              : Colors.blue.withValues(alpha: 0.2)),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      user.role.toUpperCase(),
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        color: user.role == 'admin'
+                                            ? Colors.redAccent
+                                            : (user.role == 'author' ? Colors.tealAccent : Colors.blueAccent),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(user.bio, style: const TextStyle(color: Colors.grey)),
+                                ],
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.edit_outlined),
+                              tooltip: 'Sửa thông tin',
+                              onPressed: () => _showEditProfileDialog(context, user),
+                            ),
+                          ],
+                        ),
+
+                        // NÚT ĐĂNG KÝ LÀM TÁC GIẢ (CHỈ HIỆN KHI ĐANG LÀ ĐỘC GIẢ READER)
+                        if (user.role == 'reader') ...[
+                          const SizedBox(height: 16),
+                          const Divider(),
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.tonalIcon(
+                              onPressed: () {
+                                state.becomeAuthor();
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Chúc mừng! Bạn đã trở thành Tác giả và mở khóa Creator Studio.'),
+                                    backgroundColor: Colors.teal,
+                                    duration: Duration(seconds: 2),
+                                  ),
+                                );
+                              },
+                              icon: const Icon(Icons.edit_note, color: Colors.tealAccent),
+                              label: Text(state.t('register_author')),
+                            ),
+                          ),
                         ],
-                      ),
+                      ],
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Card(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      child: Column(
-                        children: [
-                          Text('${state.readingHistory.length}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.amber)),
-                          const SizedBox(height: 4),
-                          const Text('Đang đọc dở', style: TextStyle(color: Colors.grey)),
-                        ],
+                const SizedBox(height: 16),
+
+                // THỐNG KÊ TỦ SÁCH VÀ TIẾN ĐỘ ĐỌC
+                Row(
+                  children: [
+                    Expanded(
+                      child: Card(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          child: Column(
+                            children: [
+                              Text('${state.currentFavorites.length}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.deepPurpleAccent)),
+                              const SizedBox(height: 4),
+                              Text(state.t('saved_stories'), style: const TextStyle(color: Colors.grey)),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Card(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          child: Column(
+                            children: [
+                              Text('${state.currentHistory.length}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.amber)),
+                              const SizedBox(height: 4),
+                              Text(state.t('reading_stories'), style: const TextStyle(color: Colors.grey)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+
+                // TÙY CHỌN HỆ THỐNG
+                Text(state.t('system_options'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                Card(
+                  child: Column(
+                    children: [
+                      SwitchListTile(
+                        title: Text(state.t('dark_mode')),
+                        secondary: const Icon(Icons.dark_mode_outlined),
+                        value: state.themeMode == ThemeMode.dark,
+                        onChanged: (_) => state.toggleTheme(),
+                      ),
+                      const Divider(height: 1),
+                      ListTile(
+                        leading: const Icon(Icons.language_outlined),
+                        title: Text(state.t('lang_label')),
+                        trailing: SegmentedButton<String>(
+                          segments: const [
+                            ButtonSegment(value: 'vi', label: Text('VI')),
+                            ButtonSegment(value: 'en', label: Text('EN')),
+                          ],
+                          selected: {state.language},
+                          onSelectionChanged: (_) => state.toggleLanguage(),
+                        ),
+                      ),
+                      const Divider(height: 1),
+                      ListTile(
+                        leading: const Icon(Icons.logout, color: Colors.redAccent),
+                        title: Text(state.t('logout_account'), style: const TextStyle(color: Colors.redAccent)),
+                        onTap: state.logout,
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 20),
-            const Text('Tùy Chọn Hệ Thống', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            Card(
-              child: Column(
-                children: [
-                  SwitchListTile(
-                    title: const Text('Giao diện tối (Dark Mode)'),
-                    secondary: const Icon(Icons.dark_mode_outlined),
-                    value: state.themeMode == ThemeMode.dark,
-                    onChanged: (_) => state.toggleTheme(),
-                  ),
-                  const Divider(height: 1),
-                  ListTile(
-                    leading: const Icon(Icons.language_outlined),
-                    title: const Text('Ngôn ngữ hiển thị'),
-                    trailing: SegmentedButton<String>(
-                      segments: const [
-                        ButtonSegment(value: 'vi', label: Text('VI')),
-                        ButtonSegment(value: 'en', label: Text('EN')),
-                      ],
-                      selected: {state.language},
-                      onSelectionChanged: (_) => state.toggleLanguage(),
-                    ),
-                  ),
-                  const Divider(height: 1),
-                  ListTile(
-                    leading: const Icon(Icons.logout, color: Colors.redAccent),
-                    title: const Text('Đăng xuất khỏi tài khoản', style: TextStyle(color: Colors.redAccent)),
-                    onTap: state.logout,
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -178,17 +227,17 @@ class ProfileScreen extends StatelessWidget {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Chỉnh sửa thông tin cá nhân'),
+        title: Text(globalAppState.t('edit_profile_title')),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Tên hiển thị')),
+            TextField(controller: nameCtrl, decoration: InputDecoration(labelText: globalAppState.t('display_name'))),
             const SizedBox(height: 12),
-            TextField(controller: bioCtrl, decoration: const InputDecoration(labelText: 'Giới thiệu bản thân (Bio)')),
+            TextField(controller: bioCtrl, decoration: InputDecoration(labelText: globalAppState.t('bio_label'))),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Hủy')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(globalAppState.t('cancel'))),
           FilledButton(
             onPressed: () {
               if (nameCtrl.text.trim().isNotEmpty) {
@@ -196,7 +245,7 @@ class ProfileScreen extends StatelessWidget {
                 Navigator.pop(ctx);
               }
             },
-            child: const Text('Lưu'),
+            child: Text(globalAppState.t('save')),
           ),
         ],
       ),
