@@ -625,6 +625,7 @@ class AppState extends ChangeNotifier {
       'auth_login_button': {'vi': 'Đăng Nhập', 'en': 'Log In'},
       'auth_register_button': {'vi': 'Đăng Ký', 'en': 'Register'},
       'author_role': {'vi': 'Tác giả / Dịch giả', 'en': 'Author / Translator'},
+      'role': {'vi': 'Vai trò', 'en': 'Role'},
       'admin_role': {'vi': 'Quản trị viên', 'en': 'Administrator'},
       'reader_role': {'vi': 'Độc giả', 'en': 'Reader'},
       // Admin Dashboard

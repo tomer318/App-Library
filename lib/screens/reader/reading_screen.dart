@@ -457,23 +457,98 @@ class _ReadingScreenState extends State<ReadingScreen> {
                           physics: const ClampingScrollPhysics(),
                           cacheExtent: 3000,
                           padding: EdgeInsets.zero,
-                          itemCount: chapter.imageUrls.length,
+                          itemCount: chapter.imageUrls.length + 1,
                           itemBuilder: (context, index) {
-                            return _buildOptimizedImage(index, chapter.imageUrls[index]);
+                            // CÁC TRANG ẢNH
+                            if (index < chapter.imageUrls.length) {
+                              return _buildOptimizedImage(index, chapter.imageUrls[index]);
+                            }
+
+                            // BANNER CHUYỂN CHƯƠNG KHI CUỘN ĐẾN CUỐI TRANG
+                            final hasNext = currentChapterIndex < widget.story.chapters.length - 1;
+                            return Container(
+                              padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 20),
+                              color: _bgColor,
+                              child: Column(
+                                children: [
+                                  Text(
+                                    hasNext ? 'Bạn đã đọc hết ${chapter.title}' : 'Bạn đã đọc đến chương mới nhất!',
+                                    style: TextStyle(color: Colors.grey, fontSize: 13),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  if (hasNext)
+                                    SizedBox(
+                                      width: double.infinity,
+                                      child: FilledButton.icon(
+                                        style: FilledButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(vertical: 14),
+                                          backgroundColor: Colors.deepPurpleAccent,
+                                        ),
+                                        icon: const Icon(Icons.arrow_forward),
+                                        label: Text(
+                                          'Đọc tiếp: ${widget.story.chapters[currentChapterIndex + 1].title}',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(fontWeight: FontWeight.bold),
+                                        ),
+                                        onPressed: () => _onChapterChanged(currentChapterIndex + 1),
+                                      ),
+                                    )
+                                  else
+                                    OutlinedButton.icon(
+                                      icon: const Icon(Icons.check_circle_outline),
+                                      label: const Text('Quay về trang thông tin truyện'),
+                                      onPressed: () => Navigator.pop(context),
+                                    ),
+                                ],
+                              ),
+                            );
                           },
                         )
                       : SingleChildScrollView(
                           controller: _scrollController,
                           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-                          child: Text(
-                            chapter.content,
-                            style: TextStyle(
-                              fontSize: fontSize,
-                              color: _textColor,
-                              height: 1.8,
-                              letterSpacing: 0.2,
-                              fontFamily: globalAppState.fontFamily == 'Serif' ? 'serif' : null,
-                            ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                chapter.content,
+                                style: TextStyle(
+                                  fontSize: fontSize,
+                                  color: _textColor,
+                                  height: 1.8,
+                                  letterSpacing: 0.2,
+                                  fontFamily: globalAppState.fontFamily == 'Serif' ? 'serif' : null,
+                                ),
+                              ),
+                              const SizedBox(height: 30),
+                              const Divider(),
+                              const SizedBox(height: 16),
+                              // NÚT CHUYỂN NHANH CHƯƠNG CUỐI TRANG
+                              if (currentChapterIndex < widget.story.chapters.length - 1)
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: FilledButton.icon(
+                                    style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
+                                    icon: const Icon(Icons.arrow_forward),
+                                    label: Text(
+                                      'Chương tiếp theo: ${widget.story.chapters[currentChapterIndex + 1].title}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontWeight: FontWeight.bold),
+                                    ),
+                                    onPressed: () => _onChapterChanged(currentChapterIndex + 1),
+                                  ),
+                                )
+                              else
+                                Center(
+                                  child: Text(
+                                    '🎉 Bạn đã đọc hết các chương hiện có!',
+                                    style: TextStyle(color: Colors.grey.shade400, fontStyle: FontStyle.italic),
+                                  ),
+                                ),
+                              const SizedBox(height: 20),
+                            ],
                           ),
                         ),
                 ),

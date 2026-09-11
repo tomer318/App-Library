@@ -64,8 +64,8 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
   @override
   Widget build(BuildContext context) {
     final state = globalAppState;
+    final isDesktop = MediaQuery.of(context).size.width >= 768;
 
-    // BỌC LISTENABLEBUILDER ĐỂ KHI ĐỔI NGÔN NGỮ LẬP TỨC RE-RENDER CẢ APPBAR LẪN BOTTOM BAR
     return ListenableBuilder(
       listenable: state,
       builder: (context, _) {
@@ -73,10 +73,10 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
           const ExploreScreen(),
           const FavoritesScreen(),
           const ProfileScreen(),
-
           if (state.currentUser?.role == 'author')
             const CreatorStudioScreen(),
-          if (state.currentUser?.role == 'admin')
+          // CHỈ HIỂN THỊ ADMIN DASHBOARD TRÊN MÁY TÍNH / DESKTOP
+          if (state.currentUser?.role == 'admin' && isDesktop)
             const AdminDashboardScreen(),
         ];
 
@@ -102,7 +102,8 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
               selectedIcon: const Icon(Icons.draw),
               label: state.t('nav_studio'),
             ),
-          if (state.currentUser?.role == 'admin')
+          // CHỈ HIỆN ICON QUẢN TRỊ KHI RỘNG >= 768px
+          if (state.currentUser?.role == 'admin' && isDesktop)
             NavigationDestination(
               icon: const Icon(Icons.admin_panel_settings_outlined),
               selectedIcon: const Icon(Icons.admin_panel_settings),
@@ -236,7 +237,7 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
                     itemBuilder: (_) => [
                       PopupMenuItem(
                         enabled: false,
-                        child: Text('Vai trò: ${state.currentUser!.role.toUpperCase()}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                        child: Text('${state.t('role')}: ${state.currentUser!.role.toUpperCase()}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
                       ),
                       PopupMenuItem(
                         value: 'logout',

@@ -29,16 +29,36 @@ class _AdvancedSearchDialogState extends State<AdvancedSearchDialog> {
   Widget build(BuildContext context) {
     final state = globalAppState;
 
+    final screenWidth = MediaQuery.of(context).size.width;
+
     return AlertDialog(
+      backgroundColor: const Color(0xFF1E1E1E),
+      surfaceTintColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       title: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          const Icon(Icons.tune, color: Colors.deepPurpleAccent),
-          const SizedBox(width: 8),
-          Text(state.t('adv_search_title'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          Row(
+            children: [
+              const Icon(Icons.tune, color: Colors.deepPurpleAccent, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                globalAppState.t('adv_search_title'),
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+            ],
+          ),
+          IconButton(
+            icon: const Icon(Icons.close, size: 20, color: Colors.grey),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            onPressed: () => Navigator.pop(context),
+          ),
         ],
       ),
       content: SizedBox(
-        width: 450,
+        width: screenWidth < 500 ? screenWidth * 0.9 : 420,
+        height: 400,
         child: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -90,17 +110,30 @@ class _AdvancedSearchDialogState extends State<AdvancedSearchDialog> {
           ),
         ),
       ),
+      actionsAlignment: MainAxisAlignment.spaceBetween,
+      actionsPadding: const EdgeInsets.only(left: 20, right: 20, bottom: 16),
       actions: [
         TextButton(
           onPressed: () {
             state.resetFilters();
-            Navigator.pop(context);
+            setState(() {
+              authorCtrl.clear();
+              genre = 'Tất cả';
+              status = 'Tất cả';
+              sort = 'Mới nhất';
+            });
           },
-          child: Text(state.t('reset_default')),
+          child: Text(state.t('reset_default'), style: const TextStyle(color: Colors.grey)),
         ),
         FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: Colors.deepPurpleAccent),
           onPressed: () {
-            state.setAdvancedFilter(author: authorCtrl.text.trim(), genre: genre, status: status, sort: sort);
+            state.setAdvancedFilter(
+              author: authorCtrl.text.trim(),
+              genre: genre,
+              status: status,
+              sort: sort,
+            );
             Navigator.pop(context);
           },
           child: Text(state.t('apply_filter')),

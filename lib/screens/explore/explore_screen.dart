@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../widgets/shimmer_loading.dart';
 import '../../models/models.dart';
 import '../../state/app_state.dart';
 import '../detail/story_detail_screen.dart';
@@ -183,6 +184,14 @@ class ExploreScreen extends StatelessWidget {
                                             Image.network(
                                               story.coverUrl,
                                               fit: BoxFit.cover,
+                                              loadingBuilder: (context, child, loadingProgress) {
+                                                if (loadingProgress == null) return child;
+                                                return const ShimmerEffect(
+                                                  width: double.infinity,
+                                                  height: double.infinity,
+                                                  borderRadius: 0,
+                                                );
+                                              },
                                               errorBuilder: (_, __, ___) => Container(
                                                 color: Colors.grey.shade900,
                                                 child: const Icon(Icons.menu_book, size: 40),

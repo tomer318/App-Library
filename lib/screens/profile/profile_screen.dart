@@ -9,6 +9,7 @@ class ProfileScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = globalAppState;
+    final isDesktop = MediaQuery.of(context).size.width >= 768;
 
     return ListenableBuilder(
       listenable: state,
@@ -107,13 +108,13 @@ class ProfileScreen extends StatelessWidget {
                             ),
                             IconButton(
                               icon: const Icon(Icons.edit_outlined),
-                              tooltip: 'Sửa thông tin',
+                              tooltip: state.t('edit_profile_title'),
                               onPressed: () => _showEditProfileDialog(context, user),
                             ),
                           ],
                         ),
 
-                        // NÚT ĐĂNG KÝ LÀM TÁC GIẢ (CHỈ HIỆN KHI ĐANG LÀ ĐỘC GIẢ READER)
+                        // NÚT ĐĂNG KÝ LÀM TÁC GIẢ (CHỈ HIỆN KHI LÀ ĐỘC GIẢ)
                         if (user.role == 'reader') ...[
                           const SizedBox(height: 16),
                           const Divider(),
@@ -124,15 +125,56 @@ class ProfileScreen extends StatelessWidget {
                               onPressed: () {
                                 state.becomeAuthor();
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Chúc mừng! Bạn đã trở thành Tác giả và mở khóa Creator Studio.'),
+                                  SnackBar(
+                                    content: Text(state.language == 'vi'
+                                        ? 'Chúc mừng! Bạn đã trở thành Tác giả và mở khóa Creator Studio.'
+                                        : 'Congratulations! You are now an Author with Studio access.'),
                                     backgroundColor: Colors.teal,
-                                    duration: Duration(seconds: 2),
+                                    duration: const Duration(seconds: 2),
                                   ),
                                 );
                               },
                               icon: const Icon(Icons.edit_note, color: Colors.tealAccent),
                               label: Text(state.t('register_author')),
+                            ),
+                          ),
+                        ],
+
+                        // THÔNG BÁO DÀNH CHO ADMIN KHI DÙNG TRÊN ĐIỆN THOẠI
+                        if (user.role == 'admin' && !isDesktop) ...[
+                          const SizedBox(height: 16),
+                          const Divider(),
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.amber.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.desktop_windows_outlined, color: Colors.amber),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        state.language == 'vi' ? 'Cổng Quản Trị Hệ Thống' : 'Admin Management Portal',
+                                        style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.amber, fontSize: 13),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        state.language == 'vi'
+                                            ? 'Để quản trị và biên tập tốt nhất, vui lòng mở ứng dụng trên trình duyệt máy tính.'
+                                            : 'For best management experience, please access via a desktop browser.',
+                                        style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
