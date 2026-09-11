@@ -63,7 +63,25 @@ class StoryDetailScreen extends StatelessWidget {
                     children: [
                       ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: Image.network(story.coverUrl, width: 140, height: 200, fit: BoxFit.cover),
+                        child: Image.network(
+                          story.coverUrl,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Container(
+                              width: 140,
+                              height: 200,
+                              color: Colors.grey.shade900,
+                              child: const Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.broken_image, size: 40, color: Colors.grey),
+                                  SizedBox(height: 6),
+                                  Text('Lỗi ảnh', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
                       ),
                       const SizedBox(width: 20),
                       Expanded(
@@ -89,20 +107,26 @@ class StoryDetailScreen extends StatelessWidget {
                             const SizedBox(height: 4),
                             Text('${state.t('chapters')}: ${story.chapters.length}'),
                             const SizedBox(height: 8),
+                            Text('Năm phát hành: ${story.releaseYear}', style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                            const SizedBox(height: 8),
                             Wrap(
-                              spacing: 8,
+                              spacing: 6,
+                              runSpacing: 6,
                               children: [
                                 Chip(
                                   label: Text(story.type == 'comic' ? 'Manga' : 'Novel', style: const TextStyle(fontSize: 11)),
                                   visualDensity: VisualDensity.compact,
                                 ),
-                                Chip(
-                                  label: Text(
-                                    story.language == 'en' ? '🇬🇧 English' : '🇻🇳 Tiếng Việt',
-                                    style: const TextStyle(fontSize: 11),
-                                  ),
-                                  visualDensity: VisualDensity.compact,
-                                ),
+                                ...story.tags.map((tag) {
+                                  return ActionChip(
+                                    avatar: const Icon(Icons.tag, size: 14, color: Colors.deepPurpleAccent),
+                                    label: Text(tag, style: const TextStyle(fontSize: 11)),
+                                    onPressed: () {
+                                      state.setSingleTagFilter(tag);
+                                      Navigator.pop(context);
+                                    },
+                                  );
+                                }),
                               ],
                             ),
                           ],

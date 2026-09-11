@@ -3,8 +3,21 @@ import 'state/app_state.dart';
 import 'screens/screens.dart';
 import 'widgets/auth_dialog.dart';
 import 'widgets/settings_dialog.dart';
+import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'state/app_state.dart';
+import 'screens/screens.dart';
+import 'widgets/auth_dialog.dart';
+import 'widgets/settings_dialog.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await Supabase.initialize(
+    url: 'https://trozbojbfgjpqkyuxtaz.supabase.co',
+    anonKey: 'sb_publishable_OTzZAfBPAkmRpBq6J9qFgA_xWzy-J_M',
+  );
+
   runApp(const NovelPlatformApp());
 }
 

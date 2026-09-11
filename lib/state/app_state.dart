@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/models.dart';
+import '../services/supabase_service.dart';
 
 class AppState extends ChangeNotifier {
   ThemeMode themeMode = ThemeMode.dark;
@@ -14,12 +15,43 @@ class AppState extends ChangeNotifier {
 
   // Tìm kiếm cơ bản & nâng cao
   String searchQuery = '';
-  String selectedGenre = 'Tất cả';
+  Set<String> selectedTags = {}; // LỌC NHIỀU TAG (AND)
   String filterStatus = 'Tất cả'; // 'Tất cả', 'Đang tiến hành', 'Đã hoàn thành'
   String filterAuthor = '';
+  int? filterYear; // LỌC THEO NĂM
   String sortBy = 'Mới nhất'; // 'Mới nhất', 'Lượt xem', 'Điểm đánh giá'
   String selectedType = 'all'; // 'all', 'novel', 'comic'
   String storyLanguageFilter = 'all'; // 'all', 'vi', 'en'
+  bool isFilterBarVisible = false; // ẨN / HIỆN THANH LỌC
+
+  // Getter & Setter tương thích ngược cho selectedGenre
+  String get selectedGenre => selectedTags.isEmpty ? 'Tất cả' : selectedTags.first;
+  set selectedGenre(String g) {
+    if (g == 'Tất cả') {
+      selectedTags.clear();
+    } else {
+      selectedTags = {g};
+    }
+    notifyListeners();
+  }
+
+  // BỘ TAG HỆ THỐNG MẪU ĐỊNH SẴN
+  final List<String> masterTags = [
+    'Tâm linh',
+    'Kiếm hiệp',
+    'Viễn tưởng',
+    'Hành động',
+    'Manhwa',
+    'Romance',
+    'Comedy',
+    'Sci-Fi',
+    'Hệ thống',
+    'Huyền huyễn',
+    'Kinh dị',
+  ];
+
+  // Getter genres tương thích ngược
+  List<String> get genres => ['Tất cả', ...masterTags];
 
   // Dữ liệu cá nhân theo từng User: Map<UserId, Set<StoryId>>
   Map<String, Set<String>> userFavorites = {};
@@ -58,30 +90,52 @@ class AppState extends ChangeNotifier {
   Future<void> _loadFromStorage() async {
     final prefs = await SharedPreferences.getInstance();
 
+    // 1. Tải cài đặt giao diện cục bộ
     final savedTheme = prefs.getString('themeMode') ?? 'dark';
     themeMode = savedTheme == 'light' ? ThemeMode.light : ThemeMode.dark;
     language = prefs.getString('language') ?? 'vi';
     defaultFontSize = prefs.getDouble('fontSize') ?? 18.0;
     fontFamily = prefs.getString('fontFamily') ?? 'Mặc định';
 
-    final usersRaw = prefs.getString('registeredUsers');
-    if (usersRaw != null) {
-      final List decoded = jsonDecode(usersRaw);
-      registeredUsers = decoded.map((e) => AppUser.fromJson(e)).toList();
-    } else {
-      registeredUsers = [
-        AppUser(id: 'u_admin', username: 'admin', password: '123', role: 'admin', bio: 'Quản trị viên tối cao'),
-        AppUser(id: 'u_author', username: 'tacgia', password: '123', role: 'author', bio: 'Họa sĩ truyện tranh độc lập'),
-        AppUser(id: 'u_1', username: 'docgia1', password: '123', role: 'reader', bio: 'Đam mê tu tiên & kiếm hiệp'),
-      ];
-      _saveUsers();
-    }
-
+    // 2. Tải phiên đăng nhập người dùng hiện tại
     final currentUserRaw = prefs.getString('currentUser');
     if (currentUserRaw != null) {
       currentUser = AppUser.fromJson(jsonDecode(currentUserRaw));
     }
 
+    // 3. TẢI DỮ LIỆU TỪ SUPABASE CLOUD
+    try {
+      // Tải danh sách User từ Supabase
+      final cloudUsers = await SupabaseService.fetchUsers();
+      if (cloudUsers.isNotEmpty) {
+        registeredUsers = cloudUsers;
+      } else {
+        registeredUsers = [
+          AppUser(id: 'u_admin', username: 'admin', password: '123', role: 'admin', bio: 'Quản trị viên tối cao'),
+          AppUser(id: 'u_author', username: 'tacgia', password: '123', role: 'author', bio: 'Họa sĩ truyện tranh độc lập'),
+          AppUser(id: 'u_1', username: 'docgia1', password: '123', role: 'reader', bio: 'Đam mê tu tiên & kiếm hiệp'),
+        ];
+      }
+
+      // Tải danh sách Truyện từ Supabase
+      final cloudStories = await SupabaseService.fetchStories();
+      if (cloudStories.isNotEmpty) {
+        stories = cloudStories;
+      } else {
+        // Nếu Database mới tinh chưa có truyện, tự động nạp các bộ truyện mẫu ban đầu lên Cloud
+        stories = _getInitialStories();
+        for (var s in stories) {
+          await SupabaseService.saveStory(s, isNew: true);
+        }
+      }
+    } catch (e) {
+      debugPrint('Lỗi kết nối Supabase, chuyển sang chế độ dự phòng cục bộ: $e');
+      if (stories.isEmpty) {
+        stories = _getInitialStories();
+      }
+    }
+
+    // 4. Tải danh sách yêu thích và lịch sử đọc
     final favRaw = prefs.getString('userFavorites');
     if (favRaw != null) {
       final Map<String, dynamic> decoded = jsonDecode(favRaw);
@@ -98,21 +152,6 @@ class AppState extends ChangeNotifier {
           innerMap.map((storyId, itemJson) => MapEntry(storyId, ReadingItem.fromJson(itemJson))),
         );
       });
-    }
-
-    final storiesRaw = prefs.getString('stories');
-    if (storiesRaw != null) {
-      final List decoded = jsonDecode(storiesRaw);
-      stories = decoded.map((e) => Story.fromJson(e)).toList();
-    } else {
-      stories = _getInitialStories();
-      _saveStories();
-    }
-
-    final commentsRaw = prefs.getString('allComments');
-    if (commentsRaw != null) {
-      final List decoded = jsonDecode(commentsRaw);
-      allComments = decoded.map((e) => Comment.fromJson(e)).toList();
     }
 
     notifyListeners();
@@ -160,26 +199,22 @@ class AppState extends ChangeNotifier {
     await prefs.setString('allComments', jsonEncode(allComments.map((c) => c.toJson()).toList()));
   }
 
-  List<String> get genres {
-    final set = {'Tất cả'};
-    for (var s in stories) {
-      set.add(s.genre);
-    }
-    return set.toList();
-  }
-
   // BỘ LỌC TÌM KIẾM NÂNG CAO
   List<Story> get filteredStories {
     final list = stories.where((s) {
       final matchesSearch = s.title.toLowerCase().contains(searchQuery.toLowerCase()) ||
           s.author.toLowerCase().contains(searchQuery.toLowerCase());
       final matchesAuthor = filterAuthor.isEmpty || s.author.toLowerCase().contains(filterAuthor.toLowerCase());
-      final matchesGenre = selectedGenre == 'Tất cả' || s.genre == selectedGenre;
+      
+      // Lọc đa tag: Truyện phải chứa TẤT CẢ các tag đang được chọn
+      final matchesTags = selectedTags.isEmpty || selectedTags.every((tag) => s.tags.contains(tag));
+      
+      final matchesYear = filterYear == null || s.releaseYear == filterYear;
       final matchesStatus = filterStatus == 'Tất cả' || s.status == filterStatus;
       final matchesType = selectedType == 'all' || s.type == selectedType;
       final matchesLang = storyLanguageFilter == 'all' || s.language == storyLanguageFilter;
 
-      return matchesSearch && matchesAuthor && matchesGenre && matchesStatus && matchesType && matchesLang;
+      return matchesSearch && matchesAuthor && matchesTags && matchesYear && matchesStatus && matchesType && matchesLang;
     }).toList();
 
     if (sortBy == 'Lượt xem') {
@@ -193,13 +228,73 @@ class AppState extends ChangeNotifier {
     return list;
   }
 
+  void toggleTagFilter(String tag) {
+    if (selectedTags.contains(tag)) {
+      selectedTags.remove(tag);
+    } else {
+      selectedTags.add(tag);
+    }
+    notifyListeners();
+  }
+
+  void setSingleTagFilter(String tag) {
+    selectedTags = {tag};
+    notifyListeners();
+  }
+
+  void clearTagsFilter() {
+    selectedTags.clear();
+    notifyListeners();
+  }
+
+  void toggleFilterBar() {
+    isFilterBarVisible = !isFilterBarVisible;
+    notifyListeners();
+  }
+
+  void setAdvancedFilter({
+    required String author,
+    String? genre,
+    Set<String>? tags,
+    required String status,
+    required String sort,
+    int? year,
+  }) {
+    filterAuthor = author;
+    if (tags != null) {
+      selectedTags = Set.from(tags);
+    } else if (genre != null && genre != 'Tất cả') {
+      selectedTags = {genre};
+    } else {
+      selectedTags.clear();
+    }
+    filterStatus = status;
+    sortBy = sort;
+    filterYear = year;
+    notifyListeners();
+  }
+
+  void resetFilters() {
+    searchQuery = '';
+    selectedTags.clear();
+    filterStatus = 'Tất cả';
+    filterAuthor = '';
+    filterYear = null;
+    sortBy = 'Mới nhất';
+    notifyListeners();
+  }
+
   void setSearchQuery(String q) {
     searchQuery = q;
     notifyListeners();
   }
 
   void setSelectedGenre(String g) {
-    selectedGenre = g;
+    if (g == 'Tất cả') {
+      selectedTags.clear();
+    } else {
+      selectedTags = {g};
+    }
     notifyListeners();
   }
 
@@ -213,24 +308,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setAdvancedFilter({required String author, required String genre, required String status, required String sort}) {
-    filterAuthor = author;
-    selectedGenre = genre;
-    filterStatus = status;
-    sortBy = sort;
-    notifyListeners();
-  }
-
-  void resetFilters() {
-    searchQuery = '';
-    selectedGenre = 'Tất cả';
-    filterStatus = 'Tất cả';
-    filterAuthor = '';
-    sortBy = 'Mới nhất';
-    notifyListeners();
-  }
-
-  void saveReadingProgress(String storyId, int chapIndex) {
+  Future<void> saveReadingProgress(String storyId, int chapIndex) async {
     if (currentUser == null) return;
     final userId = currentUser!.id;
     if (!userHistory.containsKey(userId)) {
@@ -245,10 +323,11 @@ class AppState extends ChangeNotifier {
     final storyIndex = stories.indexWhere((s) => s.id == storyId);
     if (storyIndex != -1) {
       stories[storyIndex].viewCount++;
-      _saveStories();
     }
     _saveHistory();
     notifyListeners();
+
+    await SupabaseService.saveHistory(userId, storyId, chapIndex);
   }
 
   void clearHistory() {
@@ -278,7 +357,15 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  String? login(String username, String password) {
+  Future<String?> login(String username, String password) async {
+    // 1. Tải danh sách user mới nhất từ Supabase để đảm bảo dữ liệu luôn tươi mới
+    try {
+      final cloudUsers = await SupabaseService.fetchUsers();
+      if (cloudUsers.isNotEmpty) {
+        registeredUsers = cloudUsers;
+      }
+    } catch (_) {}
+
     final user = registeredUsers.cast<AppUser?>().firstWhere(
       (u) => u?.username.toLowerCase() == username.trim().toLowerCase(),
       orElse: () => null,
@@ -288,12 +375,12 @@ class AppState extends ChangeNotifier {
     if (user.password != password) return 'Mật khẩu không chính xác!';
 
     currentUser = user;
-    _saveUsers();
+    await _saveUsers();
     notifyListeners();
     return null;
   }
 
-  String? register(String username, String password, {bool makeAdmin = false}) {
+  Future<String?> register(String username, String password, {bool makeAdmin = false}) async {
     final exists = registeredUsers.any(
       (u) => u.username.toLowerCase() == username.trim().toLowerCase(),
     );
@@ -308,8 +395,10 @@ class AppState extends ChangeNotifier {
     );
     registeredUsers.add(newUser);
     currentUser = newUser;
-    _saveUsers();
     notifyListeners();
+
+    await SupabaseService.registerUser(newUser);
+    _saveUsers();
     return null;
   }
 
@@ -350,20 +439,23 @@ class AppState extends ChangeNotifier {
     return userHistory[currentUser!.id]?[storyId]?.chapterIndex;
   }
 
-  void toggleFavorite(String storyId) {
+  Future<void> toggleFavorite(String storyId) async {
     if (currentUser == null) return;
     final userId = currentUser!.id;
     if (!userFavorites.containsKey(userId)) {
       userFavorites[userId] = {};
     }
 
-    if (userFavorites[userId]!.contains(storyId)) {
+    final isFav = userFavorites[userId]!.contains(storyId);
+    if (isFav) {
       userFavorites[userId]!.remove(storyId);
     } else {
       userFavorites[userId]!.add(storyId);
     }
     _saveFavorites();
     notifyListeners();
+
+    await SupabaseService.toggleFavorite(userId, storyId, isFav);
   }
 
   void rateStory(String storyId, int rating) {
@@ -422,35 +514,42 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  void addStory(Story story) {
+  Future<void> addStory(Story story) async {
     stories.insert(0, story);
-    _saveStories();
     notifyListeners();
+    await SupabaseService.saveStory(story, isNew: true);
+    _saveStories();
   }
 
-  void updateStory(String id, String title, String author, String genre, String status, String cover, String desc) {
+  Future<void> updateStory(String id, String title, String author, List<String> tags, int year, String status, String cover, String desc) async {
     final s = stories.firstWhere((element) => element.id == id);
     s.title = title;
     s.author = author;
-    s.genre = genre;
+    s.tags = tags;
+    s.releaseYear = year;
     s.status = status;
     s.coverUrl = cover;
     s.description = desc;
     s.updatedAt = DateTime.now();
-    _saveStories();
     notifyListeners();
+
+    await SupabaseService.saveStory(s, isNew: false);
+    _saveStories();
   }
 
-  void addChapterToStory(String storyId, String chapTitle, {String content = '', List<String>? imageUrls}) {
+  Future<void> addChapterToStory(String storyId, String chapTitle, {String content = '', List<String>? imageUrls}) async {
     final s = stories.firstWhere((element) => element.id == storyId);
+    final order = s.chapters.length;
     s.chapters.add(Chapter(
       title: chapTitle,
       content: content,
       imageUrls: imageUrls ?? [],
     ));
     s.updatedAt = DateTime.now();
-    _saveStories();
     notifyListeners();
+
+    await SupabaseService.addChapter(storyId, order, chapTitle, content: content, imageUrls: imageUrls);
+    _saveStories();
   }
 
   void updateChapter(String storyId, int chapIndex, String chapTitle, {String content = '', List<String>? imageUrls}) {
@@ -477,7 +576,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  void removeStory(String storyId) {
+  Future<void> removeStory(String storyId) async {
     stories.removeWhere((s) => s.id == storyId);
     for (var favSet in userFavorites.values) {
       favSet.remove(storyId);
@@ -485,12 +584,12 @@ class AppState extends ChangeNotifier {
     for (var histMap in userHistory.values) {
       histMap.remove(storyId);
     }
-    allComments.removeWhere((c) => c.storyId == storyId);
+    notifyListeners();
+
+    await SupabaseService.deleteStory(storyId);
     _saveStories();
     _saveFavorites();
     _saveHistory();
-    _saveComments();
-    notifyListeners();
   }
 
   void deleteUser(String userId) {
@@ -654,6 +753,7 @@ class AppState extends ChangeNotifier {
         case 'Tâm linh': return 'Spiritual';
         case 'Kiếm hiệp': return 'Martial Arts';
         case 'Viễn tưởng': return 'Sci-Fi';
+        case 'Hành động': return 'Action';
         case 'Hành động / Manhwa': return 'Action / Manhwa';
         default: return g;
       }
@@ -667,7 +767,8 @@ class AppState extends ChangeNotifier {
         id: '1',
         title: 'Hành Trình Về Phương Đông',
         author: 'Baird T. Spalding',
-        genre: 'Tâm linh',
+        tags: ['Tâm linh', 'Viễn tưởng'],
+        releaseYear: 2018,
         status: 'Đã hoàn thành',
         type: 'novel',
         creatorId: 'u_admin',
@@ -676,21 +777,15 @@ class AppState extends ChangeNotifier {
         viewCount: 1450,
         ratings: [5, 5, 5, 4],
         chapters: [
-          Chapter(
-            title: 'Chương 1: Lời giới thiệu đoàn thám hiểm',
-            content: 'Đoàn khảo cứu gồm các nhà khoa học hàng đầu được cử đến phương Đông để tìm hiểu về các hiện tượng tâm linh...\n\nHọ đã khám phá ra những chân lý bất biến về vũ trụ và tinh thần nhân loại.',
-          ),
-          Chapter(
-            title: 'Chương 2: Cuộc gặp gỡ bên dòng sông Hằng',
-            content: 'Bên bờ sông linh thiêng buổi sớm mai, không gian tĩnh lặng lạ thường...\n\nVị đạo sĩ già chia sẻ về sự bình an nội tại và con đường tìm lại chính mình.',
-          ),
+          Chapter(title: 'Chương 1: Lời giới thiệu đoàn thám hiểm', content: 'Đoàn khảo cứu gồm các nhà khoa học...'),
         ],
       ),
       Story(
         id: '2',
         title: 'Hiệp Khách Hành Giả',
         author: 'Kim Dung',
-        genre: 'Kiếm hiệp',
+        tags: ['Kiếm hiệp'],
+        releaseYear: 1967,
         status: 'Đang tiến hành',
         type: 'novel',
         creatorId: 'u_admin',
@@ -709,7 +804,8 @@ class AppState extends ChangeNotifier {
         id: '3',
         title: 'Biên Niên Sử Vị Lai 2099',
         author: 'Sci-Fi Studio',
-        genre: 'Viễn tưởng',
+        tags: ['Viễn tưởng'],
+        releaseYear: 2019,
         status: 'Đang tiến hành',
         type: 'novel',
         creatorId: 'u_admin',
@@ -728,37 +824,27 @@ class AppState extends ChangeNotifier {
         id: '4',
         title: 'Solo Leveling: Thợ Săn Tối Thượng',
         author: 'Chugong & DUBU',
-        genre: 'Hành động / Manhwa',
+        tags: ['Hành động', 'Manhwa', 'Hệ thống'],
+        releaseYear: 2021,
         type: 'comic',
         status: 'Đang tiến hành',
         creatorId: 'u_author',
         coverUrl: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=400&q=80',
-        description: 'Thế giới xuất hiện những cánh cổng nối với hầm ngục quái vật. Thợ săn hạng E yếu nhất bắt đầu hành trình thăng cấp không giới hạn.',
+        description: 'Thế giới xuất hiện những cánh cổng nối với hầm ngục quái vật. Thợ săn hạng E yếu nhất bắt đầu hành trình thăng cấp.',
         viewCount: 3820,
         ratings: [5, 5, 5, 5],
         chapters: [
-          Chapter(
-            title: 'Chương 1: Cửa Hầm Ngục Kép',
-            imageUrls: [
-              'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=800&q=80',
-              'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=800&q=80',
-              'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=800&q=80',
-            ],
-          ),
-          Chapter(
-            title: 'Chương 2: Tượng Đá Khổng Lồ',
-            imageUrls: [
-              'https://images.unsplash.com/photo-1514539079130-25950c84af65?w=800&q=80',
-              'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=800&q=80',
-            ],
-          ),
+          Chapter(title: 'Chương 1: Cửa Hầm Ngục Kép', imageUrls: [
+            'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=800&q=80',
+          ]),
         ],
       ),
       Story(
         id: '5',
         title: 'The Cyberpunk Odyssey 2099',
         author: 'Alexander Vance',
-        genre: 'Sci-Fi',
+        tags: ['Sci-Fi'],
+        releaseYear: 2019,
         type: 'novel',
         language: 'en',
         status: 'Đang tiến hành',

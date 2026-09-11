@@ -25,7 +25,7 @@ class ExploreScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 1. THANH TÌM KIẾM
+                  // 1. THANH TÌM KIẾM VÀ NÚT BẬT/TẮT BỘ LỌC
                   Row(
                     children: [
                       Expanded(
@@ -41,103 +41,123 @@ class ExploreScreen extends StatelessWidget {
                       ),
                       const SizedBox(width: 8),
                       IconButton.filledTonal(
+                        icon: Icon(state.isFilterBarVisible ? Icons.filter_alt : Icons.filter_alt_outlined),
+                        tooltip: 'Ẩn/Hiện bộ lọc',
+                        onPressed: state.toggleFilterBar,
+                      ),
+                      const SizedBox(width: 4),
+                      IconButton.filledTonal(
                         icon: const Icon(Icons.tune),
                         tooltip: 'Bộ lọc nâng cao',
                         onPressed: () => showDialog(
                           context: context,
+                          barrierColor: Colors.black.withValues(alpha: 0.65),
                           builder: (_) => const AdvancedSearchDialog(),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
 
-                  // 2. PHÂN LOẠI TRUYỆN (TẤT CẢ / NOVEL / MANGA)
-                  SizedBox(
-                    width: double.infinity,
-                    child: SegmentedButton<String>(
-                      style: const ButtonStyle(
-                        visualDensity: VisualDensity.compact,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  // 2. KHỐI BỘ LỌC CÓ THỂ THU GỌN / MỞ RỘNG (COLLAPSIBLE)
+                  if (state.isFilterBarVisible) ...[
+                    const SizedBox(height: 8),
+                    // Phân loại Novel / Manga
+                    SizedBox(
+                      width: double.infinity,
+                      child: SegmentedButton<String>(
+                        style: const ButtonStyle(
+                          visualDensity: VisualDensity.compact,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        segments: [
+                          ButtonSegment(
+                            value: 'all',
+                            label: Text(state.t('all'), maxLines: 1, style: const TextStyle(fontSize: 12)),
+                            icon: const Icon(Icons.apps, size: 14),
+                          ),
+                          ButtonSegment(
+                            value: 'novel',
+                            label: Text(state.t('novel'), maxLines: 1, style: const TextStyle(fontSize: 12)),
+                            icon: const Icon(Icons.menu_book, size: 14),
+                          ),
+                          ButtonSegment(
+                            value: 'comic',
+                            label: Text(state.t('manga'), maxLines: 1, style: const TextStyle(fontSize: 12)),
+                            icon: const Icon(Icons.photo_library, size: 14),
+                          ),
+                        ],
+                        selected: {state.selectedType},
+                        onSelectionChanged: (val) => state.setSelectedType(val.first),
                       ),
-                      segments: [
-                        ButtonSegment(
-                          value: 'all',
-                          label: Text(state.t('all'), maxLines: 1, style: const TextStyle(fontSize: 12)),
-                          icon: const Icon(Icons.apps, size: 14),
-                        ),
-                        ButtonSegment(
-                          value: 'novel',
-                          label: Text(state.t('novel'), maxLines: 1, style: const TextStyle(fontSize: 12)),
-                          icon: const Icon(Icons.menu_book, size: 14),
-                        ),
-                        ButtonSegment(
-                          value: 'comic',
-                          label: Text(state.t('manga'), maxLines: 1, style: const TextStyle(fontSize: 12)),
-                          icon: const Icon(Icons.photo_library, size: 14),
-                        ),
-                      ],
-                      selected: {state.selectedType},
-                      onSelectionChanged: (val) => state.setSelectedType(val.first),
                     ),
-                  ),
-                  const SizedBox(height: 8),
+                    const SizedBox(height: 6),
 
-                  // 3. LỌC NGÔN NGỮ TRUYỆN (TẤT CẢ / VIỆT / ANH)
-                  SizedBox(
-                    height: 32,
-                    child: ListView(
-                      scrollDirection: Axis.horizontal,
-                      children: [
-                        FilterChip(
-                          label: Text(state.t('filter_all_lang'), style: const TextStyle(fontSize: 11)),
-                          selected: state.storyLanguageFilter == 'all',
-                          onSelected: (_) => state.setStoryLanguageFilter('all'),
-                          visualDensity: VisualDensity.compact,
-                        ),
-                        const SizedBox(width: 6),
-                        FilterChip(
-                          avatar: const Text('🇻🇳', style: TextStyle(fontSize: 12)),
-                          label: Text(state.t('filter_vi'), style: const TextStyle(fontSize: 11)),
-                          selected: state.storyLanguageFilter == 'vi',
-                          onSelected: (_) => state.setStoryLanguageFilter('vi'),
-                          visualDensity: VisualDensity.compact,
-                        ),
-                        const SizedBox(width: 6),
-                        FilterChip(
-                          avatar: const Text('🇬🇧', style: TextStyle(fontSize: 12)),
-                          label: Text(state.t('filter_en'), style: const TextStyle(fontSize: 11)),
-                          selected: state.storyLanguageFilter == 'en',
-                          onSelected: (_) => state.setStoryLanguageFilter('en'),
-                          visualDensity: VisualDensity.compact,
-                        ),
-                      ],
+                    // Lọc theo ngôn ngữ (Tất cả / Tiếng Việt / Tiếng Anh)
+                    SizedBox(
+                      height: 32,
+                      child: ListView(
+                        scrollDirection: Axis.horizontal,
+                        children: [
+                          FilterChip(
+                            label: Text(state.t('filter_all_lang'), style: const TextStyle(fontSize: 11)),
+                            selected: state.storyLanguageFilter == 'all',
+                            onSelected: (_) => state.setStoryLanguageFilter('all'),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          const SizedBox(width: 6),
+                          FilterChip(
+                            avatar: const Text('🇻🇳', style: TextStyle(fontSize: 12)),
+                            label: Text(state.t('filter_vi'), style: const TextStyle(fontSize: 11)),
+                            selected: state.storyLanguageFilter == 'vi',
+                            onSelected: (_) => state.setStoryLanguageFilter('vi'),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          const SizedBox(width: 6),
+                          FilterChip(
+                            avatar: const Text('🇬🇧', style: TextStyle(fontSize: 12)),
+                            label: Text(state.t('filter_en'), style: const TextStyle(fontSize: 11)),
+                            selected: state.storyLanguageFilter == 'en',
+                            onSelected: (_) => state.setStoryLanguageFilter('en'),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 8),
+                    const SizedBox(height: 6),
 
-                  // 4. LỌC THEO THỂ LOẠI (GENRES)
-                  SizedBox(
-                    height: 34,
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: state.genres.length,
-                      separatorBuilder: (_, __) => const SizedBox(width: 6),
-                      itemBuilder: (ctx, idx) {
-                        final genre = state.genres[idx];
-                        final isSelected = state.selectedGenre == genre;
-                        return ChoiceChip(
-                          label: Text(state.tGenre(genre), style: const TextStyle(fontSize: 12)),
-                          selected: isSelected,
-                          onSelected: (_) => state.setSelectedGenre(genre),
-                          visualDensity: VisualDensity.compact,
-                        );
-                      },
+                    // Thanh lọc đa Tag (Master Tags)
+                    SizedBox(
+                      height: 34,
+                      child: ListView(
+                        scrollDirection: Axis.horizontal,
+                        children: [
+                          ChoiceChip(
+                            label: Text(state.t('all'), style: const TextStyle(fontSize: 12)),
+                            selected: state.selectedTags.isEmpty,
+                            onSelected: (_) => state.clearTagsFilter(),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          const SizedBox(width: 6),
+                          ...state.masterTags.map((tag) {
+                            final isSel = state.selectedTags.contains(tag);
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 6.0),
+                              child: FilterChip(
+                                label: Text(state.tGenre(tag), style: const TextStyle(fontSize: 12)),
+                                selected: isSel,
+                                onSelected: (_) => state.toggleTagFilter(tag),
+                                visualDensity: VisualDensity.compact,
+                              ),
+                            );
+                          }),
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
+                  ],
 
-                  // 5. DANH SÁCH THẺ TRUYỆN (GRIDVIEW RESPONSIVE)
+                  const SizedBox(height: 10),
+
+                  // 3. DANH SÁCH THẺ TRUYỆN (GRIDVIEW RESPONSIVE)
                   Expanded(
                     child: stories.isEmpty
                         ? Center(
@@ -158,7 +178,7 @@ class ExploreScreen extends StatelessWidget {
                         : GridView.builder(
                             gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                               maxCrossAxisExtent: 260,
-                              childAspectRatio: 0.52,
+                              childAspectRatio: 0.50,
                               crossAxisSpacing: 12,
                               mainAxisSpacing: 12,
                             ),
@@ -181,22 +201,43 @@ class ExploreScreen extends StatelessWidget {
                                         child: Stack(
                                           fit: StackFit.expand,
                                           children: [
-                                            Image.network(
-                                              story.coverUrl,
-                                              fit: BoxFit.cover,
-                                              loadingBuilder: (context, child, loadingProgress) {
-                                                if (loadingProgress == null) return child;
-                                                return const ShimmerEffect(
-                                                  width: double.infinity,
-                                                  height: double.infinity,
-                                                  borderRadius: 0,
-                                                );
-                                              },
-                                              errorBuilder: (_, __, ___) => Container(
+                                            if (story.coverUrl.trim().isEmpty)
+                                              Container(
                                                 color: Colors.grey.shade900,
-                                                child: const Icon(Icons.menu_book, size: 40),
+                                                child: const Icon(Icons.menu_book, size: 40, color: Colors.grey),
+                                              )
+                                            else
+                                              Image.network(
+                                                story.coverUrl,
+                                                fit: BoxFit.cover,
+                                                headers: const {'Accept': 'image/*'},
+                                                loadingBuilder: (context, child, loadingProgress) {
+                                                  if (loadingProgress == null) return child;
+                                                  return const ShimmerEffect(
+                                                    width: double.infinity,
+                                                    height: double.infinity,
+                                                    borderRadius: 0,
+                                                  );
+                                                },
+                                                errorBuilder: (context, error, stackTrace) => Container(
+                                                  color: Colors.grey.shade900,
+                                                  child: Column(
+                                                    mainAxisAlignment: MainAxisAlignment.center,
+                                                    children: [
+                                                      Icon(
+                                                        story.type == 'comic' ? Icons.photo_library : Icons.menu_book,
+                                                        size: 40,
+                                                        color: Colors.grey,
+                                                      ),
+                                                      const SizedBox(height: 4),
+                                                      const Text(
+                                                        'Không tải được ảnh',
+                                                        style: TextStyle(fontSize: 10, color: Colors.grey),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
                                               ),
-                                            ),
                                             // ĐIỂM ĐÁNH GIÁ & CỜ NGÔN NGỮ
                                             Positioned(
                                               top: 8,
@@ -235,7 +276,7 @@ class ExploreScreen extends StatelessWidget {
                                                 ],
                                               ),
                                             ),
-                                            // NÚT BOOKMARK
+                                            // NÚT BOOKMARK TỦ SÁCH
                                             Positioned(
                                               top: 4,
                                               right: 4,
@@ -262,35 +303,48 @@ class ExploreScreen extends StatelessWidget {
                                               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                                             ),
                                             const SizedBox(height: 2),
-                                            Text(
-                                              story.author,
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: const TextStyle(fontSize: 11, color: Colors.grey),
-                                            ),
-                                            const SizedBox(height: 6),
                                             Row(
                                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                               children: [
-                                                Flexible(
-                                                  child: Container(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                    decoration: BoxDecoration(
-                                                      color: Colors.deepPurpleAccent.withValues(alpha: 0.2),
-                                                      borderRadius: BorderRadius.circular(6),
-                                                    ),
-                                                    child: Text(
-                                                      state.tGenre(story.genre),
-                                                      maxLines: 1,
-                                                      overflow: TextOverflow.ellipsis,
-                                                      style: const TextStyle(fontSize: 10, color: Colors.deepPurpleAccent, fontWeight: FontWeight.w600),
-                                                    ),
+                                                Expanded(
+                                                  child: Text(
+                                                    story.author,
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                    style: const TextStyle(fontSize: 11, color: Colors.grey),
                                                   ),
                                                 ),
-                                                const SizedBox(width: 4),
-                                                Text('${story.chapters.length} chap', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                                                Text(
+                                                  '${story.releaseYear}',
+                                                  style: const TextStyle(fontSize: 10, color: Colors.grey),
+                                                ),
                                               ],
                                             ),
+                                            const SizedBox(height: 6),
+                                            // HIỂN THỊ CÁC TAG - BẤM VÀO TAG ĐỂ LỌC
+                                            Wrap(
+                                              spacing: 4,
+                                              runSpacing: 4,
+                                              children: story.tags.take(3).map((tag) {
+                                                return InkWell(
+                                                  borderRadius: BorderRadius.circular(4),
+                                                  onTap: () => state.setSingleTagFilter(tag),
+                                                  child: Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.deepPurpleAccent.withValues(alpha: 0.15),
+                                                      borderRadius: BorderRadius.circular(4),
+                                                    ),
+                                                    child: Text(
+                                                      state.tGenre(tag),
+                                                      style: const TextStyle(fontSize: 9, color: Colors.deepPurpleAccent, fontWeight: FontWeight.w600),
+                                                    ),
+                                                  ),
+                                                );
+                                              }).toList(),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text('${story.chapters.length} chap', style: const TextStyle(fontSize: 11, color: Colors.grey)),
                                           ],
                                         ),
                                       ),

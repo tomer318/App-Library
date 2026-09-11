@@ -70,34 +70,40 @@ class Story {
   final String id;
   String title;
   String author;
-  String genre;
+  List<String> tags; // ĐA THỂ LOẠI (TAGS)
+  int releaseYear;   // NĂM PHÁT HÀNH
+  String status;
+  String type;
+  String language;
+  String creatorId;
   String coverUrl;
   String description;
-  String status; // 'Đang tiến hành' hoặc 'Đã hoàn thành'
-  String type; // 'novel' (Truyện chữ) hoặc 'comic' (Truyện tranh)
-  String language; // 'vi' hoặc 'en'
-  String creatorId; // ID người tạo truyện
-  final List<Chapter> chapters;
-  final List<int> ratings;
   int viewCount;
+  List<int> ratings;
+  List<Chapter> chapters;
   DateTime updatedAt;
+
+  // Thuộc tính phụ tương thích ngược
+  String get genre => tags.isNotEmpty ? tags.first : 'Khác';
 
   Story({
     required this.id,
     required this.title,
     required this.author,
-    required this.genre,
-    required this.coverUrl,
-    required this.description,
-    required this.chapters,
+    required this.tags,
+    this.releaseYear = 2024,
     this.status = 'Đang tiến hành',
     this.type = 'novel',
-    this.creatorId = 'u_admin',
     this.language = 'vi',
+    this.creatorId = 'u_admin',
+    required this.coverUrl,
+    required this.description,
+    this.viewCount = 0,
     List<int>? ratings,
-    this.viewCount = 120,
+    List<Chapter>? chapters,
     DateTime? updatedAt,
-  })  : ratings = ratings ?? [5, 5, 4],
+  })  : ratings = ratings ?? [],
+        chapters = chapters ?? [],
         updatedAt = updatedAt ?? DateTime.now();
 
   double get averageRating {
@@ -106,38 +112,40 @@ class Story {
   }
 
   Map<String, dynamic> toJson() => {
-    'id': id,
-    'title': title,
-    'author': author,
-    'genre': genre,
-    'coverUrl': coverUrl,
-    'description': description,
-    'status': status,
-    'type': type,
-    'creatorId': creatorId,
-    'language': language,
-    'chapters': chapters.map((c) => c.toJson()).toList(),
-    'ratings': ratings,
-    'viewCount': viewCount,
-    'updatedAt': updatedAt.toIso8601String(),
-  };
+        'id': id,
+        'title': title,
+        'author': author,
+        'tags': tags,
+        'releaseYear': releaseYear,
+        'status': status,
+        'type': type,
+        'language': language,
+        'creatorId': creatorId,
+        'coverUrl': coverUrl,
+        'description': description,
+        'viewCount': viewCount,
+        'ratings': ratings,
+        'chapters': chapters.map((c) => c.toJson()).toList(),
+        'updatedAt': updatedAt.toIso8601String(),
+      };
 
   factory Story.fromJson(Map<String, dynamic> json) => Story(
-    id: json['id'],
-    title: json['title'],
-    author: json['author'],
-    genre: json['genre'],
-    coverUrl: json['coverUrl'],
-    description: json['description'],
-    status: json['status'] ?? 'Đang tiến hành',
-    type: json['type'] ?? 'novel',
-    creatorId: json['creatorId'] ?? 'u_admin',
-    language: json['language'] ?? 'vi',
-    chapters: (json['chapters'] as List).map((c) => Chapter.fromJson(c)).toList(),
-    ratings: List<int>.from(json['ratings'] ?? [5, 5, 4]),
-    viewCount: json['viewCount'] ?? 0,
-    updatedAt: json['updatedAt'] != null ? DateTime.parse(json['updatedAt']) : DateTime.now(),
-  );
+        id: json['id'],
+        title: json['title'],
+        author: json['author'],
+        tags: json['tags'] != null ? List<String>.from(json['tags']) : (json['genre'] != null ? [json['genre']] : ['Khác']),
+        releaseYear: json['releaseYear'] ?? 2024,
+        status: json['status'] ?? 'Đang tiến hành',
+        type: json['type'] ?? 'novel',
+        language: json['language'] ?? 'vi',
+        creatorId: json['creatorId'] ?? 'u_admin',
+        coverUrl: json['coverUrl'],
+        description: json['description'] ?? '',
+        viewCount: json['viewCount'] ?? 0,
+        ratings: json['ratings'] != null ? List<int>.from(json['ratings']) : [],
+        chapters: json['chapters'] != null ? (json['chapters'] as List).map((c) => Chapter.fromJson(c)).toList() : [],
+        updatedAt: json['updatedAt'] != null ? DateTime.parse(json['updatedAt']) : DateTime.now(),
+      );
 }
 
 class ReadingItem {

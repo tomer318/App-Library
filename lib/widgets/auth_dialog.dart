@@ -14,7 +14,7 @@ class _AuthDialogState extends State<AuthDialog> {
   final passCtrl = TextEditingController();
   String? errorMessage;
 
-  void _submit() {
+  Future<void> _submit() async {
     final u = userCtrl.text.trim();
     final p = passCtrl.text.trim();
 
@@ -25,9 +25,9 @@ class _AuthDialogState extends State<AuthDialog> {
 
     String? err;
     if (isLoginMode) {
-      err = globalAppState.login(u, p);
+      err = await globalAppState.login(u, p);
     } else {
-      err = globalAppState.register(u, p);
+      err = await globalAppState.register(u, p);
     }
 
     if (err != null) {

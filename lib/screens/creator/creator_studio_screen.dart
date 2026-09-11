@@ -157,7 +157,7 @@ class CreatorStudioScreen extends StatelessWidget {
                       id: DateTime.now().millisecondsSinceEpoch.toString(),
                       title: titleCtrl.text.trim(),
                       author: globalAppState.currentUser?.username ?? 'Ẩn danh',
-                      genre: genreCtrl.text.trim(),
+                      tags: [genreCtrl.text.trim().isEmpty ? 'Tâm linh' : genreCtrl.text.trim()],
                       coverUrl: coverCtrl.text.trim(),
                       description: descCtrl.text.trim(),
                       type: storyType,

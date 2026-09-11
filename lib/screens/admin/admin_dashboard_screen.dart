@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../models/models.dart';
 import '../../state/app_state.dart';
 import '../../widgets/comic_chapter_editor_dialog.dart';
 import '../../widgets/chapter_manager_dialog.dart';
+import '../../services/supabase_service.dart';
 
 class AdminDashboardScreen extends StatelessWidget {
   const AdminDashboardScreen({super.key});
@@ -74,13 +76,21 @@ class AdminDashboardScreen extends StatelessWidget {
                                     separatorBuilder: (_, __) => const Divider(height: 1),
                                     itemBuilder: (context, index) {
                                       final story = state.stories[index];
+                                      final mainTag = story.tags.isNotEmpty ? story.tags.first : 'Khác';
+
                                       return ListTile(
                                         leading: ClipRRect(
                                           borderRadius: BorderRadius.circular(4),
-                                          child: Image.network(story.coverUrl, width: 40, height: 50, fit: BoxFit.cover),
+                                          child: Image.network(
+                                            story.coverUrl,
+                                            width: 40,
+                                            height: 50,
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (_, __, ___) => Container(width: 40, height: 50, color: Colors.grey.shade800, child: const Icon(Icons.broken_image, size: 20)),
+                                          ),
                                         ),
                                         title: Text(story.title, style: const TextStyle(fontWeight: FontWeight.bold)),
-                                        subtitle: Text('${story.author} • ${state.tGenre(story.genre)} • ${story.chapters.length} chap • 👁️ ${story.viewCount}'),
+                                        subtitle: Text('${story.author} • ${state.tGenre(mainTag)} • ${story.chapters.length} chap • 👁️ ${story.viewCount}'),
                                         trailing: MediaQuery.of(context).size.width < 600
                                             ? PopupMenuButton<String>(
                                                 icon: const Icon(Icons.more_vert),
@@ -159,7 +169,7 @@ class AdminDashboardScreen extends StatelessWidget {
                                     itemBuilder: (context, index) {
                                       final comment = state.allComments[index];
                                       return ListTile(
-                                        leading: CircleAvatar(child: Text(comment.username[0].toUpperCase())),
+                                        leading: CircleAvatar(child: Text(comment.username.isNotEmpty ? comment.username[0].toUpperCase() : '?')),
                                         title: Row(
                                           children: [
                                             Text('${comment.username} • Chap ${comment.chapterIndex + 1}'),
@@ -192,7 +202,7 @@ class AdminDashboardScreen extends StatelessWidget {
                                 return ListTile(
                                   leading: CircleAvatar(
                                     backgroundColor: u.role == 'admin' ? Colors.redAccent : Colors.deepPurple,
-                                    child: Text(u.username[0].toUpperCase(), style: const TextStyle(color: Colors.white)),
+                                    child: Text(u.username.isNotEmpty ? u.username[0].toUpperCase() : '?', style: const TextStyle(color: Colors.white)),
                                   ),
                                   title: Text(u.username, style: const TextStyle(fontWeight: FontWeight.bold)),
                                   subtitle: Text('Vai trò: ${u.role.toUpperCase()} • Mật khẩu: ${u.password}'),
@@ -243,66 +253,167 @@ class AdminDashboardScreen extends StatelessWidget {
   void _showAddOrEditStoryModal(BuildContext context, {Story? existingStory}) {
     final titleCtrl = TextEditingController(text: existingStory?.title ?? '');
     final authorCtrl = TextEditingController(text: existingStory?.author ?? '');
-    final genreCtrl = TextEditingController(text: existingStory?.genre ?? 'Kiếm hiệp');
-    final coverCtrl = TextEditingController(text: existingStory?.coverUrl ?? 'https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=400&q=80');
+    final coverCtrl = TextEditingController(text: existingStory?.coverUrl ?? '');
     final descCtrl = TextEditingController(text: existingStory?.description ?? '');
+    final yearCtrl = TextEditingController(text: (existingStory?.releaseYear ?? 2024).toString());
+    
+    List<String> selectedTags = List<String>.from(existingStory?.tags ?? ['Tâm linh']);
+    String storyType = existingStory?.type ?? 'novel';
+    bool isUploading = false;
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(existingStory == null ? globalAppState.t('add_new_story') : globalAppState.t('edit_story')),
-        content: SizedBox(
-          width: 500,
-          child: SingleChildScrollView(
-            child: Column(
-              children: [
-                TextField(controller: titleCtrl, decoration: InputDecoration(labelText: globalAppState.t('story_title'), border: const OutlineInputBorder())),
-                const SizedBox(height: 8),
-                TextField(controller: authorCtrl, decoration: InputDecoration(labelText: globalAppState.t('author'), border: const OutlineInputBorder())),
-                const SizedBox(height: 8),
-                TextField(controller: genreCtrl, decoration: InputDecoration(labelText: globalAppState.t('genre'), border: const OutlineInputBorder())),
-                const SizedBox(height: 8),
-                TextField(controller: coverCtrl, decoration: InputDecoration(labelText: globalAppState.t('cover_url'), border: const OutlineInputBorder())),
-                const SizedBox(height: 8),
-                TextField(controller: descCtrl, maxLines: 2, decoration: InputDecoration(labelText: globalAppState.t('description'), border: const OutlineInputBorder())),
-              ],
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(globalAppState.t('cancel'))),
-          FilledButton(
-            onPressed: () {
-              if (titleCtrl.text.isNotEmpty && authorCtrl.text.isNotEmpty) {
-                if (existingStory == null) {
-                  globalAppState.addStory(
-                    Story(
-                      id: DateTime.now().millisecondsSinceEpoch.toString(),
-                      title: titleCtrl.text.trim(),
-                      author: authorCtrl.text.trim(),
-                      genre: genreCtrl.text.trim(),
-                      coverUrl: coverCtrl.text.trim(),
-                      description: descCtrl.text.trim(),
-                      chapters: [Chapter(title: 'Chương 1: Mở đầu', content: 'Nội dung đang cập nhật...')],
+      builder: (ctx) => StatefulBuilder(
+        builder: (dialogCtx, setModalState) {
+          return AlertDialog(
+            backgroundColor: const Color(0xFF1E1E1E),
+            title: Text(existingStory == null ? globalAppState.t('add_new_story') : globalAppState.t('edit_story')),
+            content: SizedBox(
+              width: 650,
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(child: TextField(controller: titleCtrl, decoration: InputDecoration(labelText: globalAppState.t('story_title'), border: const OutlineInputBorder()))),
+                        const SizedBox(width: 12),
+                        SizedBox(width: 140, child: TextField(controller: yearCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Năm phát hành', border: OutlineInputBorder()))),
+                      ],
                     ),
-                  );
-                } else {
-                  globalAppState.updateStory(
-                    existingStory.id,
-                    titleCtrl.text.trim(),
-                    authorCtrl.text.trim(),
-                    genreCtrl.text.trim(),
-                    existingStory.status,
-                    coverCtrl.text.trim(),
-                    descCtrl.text.trim(),
-                  );
-                }
-                Navigator.pop(ctx);
-              }
-            },
-            child: Text(globalAppState.t('save_changes')),
-          ),
-        ],
+                    const SizedBox(height: 12),
+                    TextField(controller: authorCtrl, decoration: InputDecoration(labelText: globalAppState.t('author'), border: const OutlineInputBorder())),
+                    const SizedBox(height: 12),
+                    
+                    // CHỌN ẢNH BÌA: BROWSE TẢI LÊN SUPABASE STORAGE
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: coverCtrl,
+                            readOnly: isUploading,
+                            decoration: InputDecoration(
+                              labelText: globalAppState.t('cover_url'),
+                              border: const OutlineInputBorder(),
+                              hintText: isUploading ? 'Đang tải ảnh lên Cloud...' : 'https://...',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton.icon(
+                          icon: isUploading
+                              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                              : const Icon(Icons.file_upload),
+                          label: Text(isUploading ? 'Đang tải...' : 'Browse'),
+                          onPressed: isUploading
+                              ? null
+                              : () async {
+                                  final picker = ImagePicker();
+                                  final file = await picker.pickImage(source: ImageSource.gallery);
+                                  if (file != null) {
+                                    setModalState(() {
+                                      isUploading = true;
+                                      coverCtrl.text = 'Đang tải ảnh lên Cloud...';
+                                    });
+
+                                    final bytes = await file.readAsBytes();
+                                    final ext = file.name.split('.').last.toLowerCase();
+
+                                    final uploadedUrl = await SupabaseService.uploadCoverImage(bytes, ext);
+
+                                    setModalState(() {
+                                      isUploading = false;
+                                      if (uploadedUrl != null) {
+                                        coverCtrl.text = uploadedUrl;
+                                      } else {
+                                        coverCtrl.text = '';
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(
+                                            content: Text('Lỗi tải ảnh lên Supabase! Vui lòng kiểm tra policy của bucket covers.'),
+                                            backgroundColor: Colors.redAccent,
+                                          ),
+                                        );
+                                      }
+                                    });
+                                  }
+                                },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+
+                    // CHỌN ĐA THỂ LOẠI (TAGS)
+                    const Text('Chọn các Tag thể loại:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: globalAppState.masterTags.map((tag) {
+                        final isChecked = selectedTags.contains(tag);
+                        return FilterChip(
+                          label: Text(tag, style: const TextStyle(fontSize: 11)),
+                          selected: isChecked,
+                          onSelected: (val) {
+                            setModalState(() {
+                              if (val) {
+                                selectedTags.add(tag);
+                              } else {
+                                selectedTags.remove(tag);
+                              }
+                            });
+                          },
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 12),
+
+                    TextField(controller: descCtrl, maxLines: 3, decoration: InputDecoration(labelText: globalAppState.t('description'), border: const OutlineInputBorder())),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: Text(globalAppState.t('cancel'))),
+              FilledButton(
+                onPressed: isUploading
+                    ? null
+                    : () {
+                        if (titleCtrl.text.isNotEmpty && authorCtrl.text.isNotEmpty) {
+                          final year = int.tryParse(yearCtrl.text.trim()) ?? 2024;
+                          if (existingStory == null) {
+                            globalAppState.addStory(
+                              Story(
+                                id: DateTime.now().millisecondsSinceEpoch.toString(),
+                                title: titleCtrl.text.trim(),
+                                author: authorCtrl.text.trim(),
+                                tags: selectedTags.isEmpty ? ['Khác'] : selectedTags,
+                                releaseYear: year,
+                                type: storyType,
+                                coverUrl: coverCtrl.text.trim().isEmpty ? 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=400&q=80' : coverCtrl.text.trim(),
+                                description: descCtrl.text.trim(),
+                                chapters: [Chapter(title: 'Chương 1: Mở đầu', content: 'Nội dung đang cập nhật...')],
+                              ),
+                            );
+                          } else {
+                            globalAppState.updateStory(
+                              existingStory.id,
+                              titleCtrl.text.trim(),
+                              authorCtrl.text.trim(),
+                              selectedTags.isEmpty ? ['Khác'] : selectedTags,
+                              year,
+                              existingStory.status,
+                              coverCtrl.text.trim(),
+                              descCtrl.text.trim(),
+                            );
+                          }
+                          Navigator.pop(ctx);
+                        }
+                      },
+                child: Text(globalAppState.t('save_changes')),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
