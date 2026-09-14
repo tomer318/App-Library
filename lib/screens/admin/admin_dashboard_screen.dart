@@ -5,6 +5,7 @@ import '../../state/app_state.dart';
 import '../../widgets/comic_chapter_editor_dialog.dart';
 import '../../widgets/chapter_manager_dialog.dart';
 import '../../services/supabase_service.dart';
+import '../../widgets/safe_network_image.dart';
 
 class AdminDashboardScreen extends StatelessWidget {
   const AdminDashboardScreen({super.key});
@@ -79,15 +80,12 @@ class AdminDashboardScreen extends StatelessWidget {
                                       final mainTag = story.tags.isNotEmpty ? story.tags.first : 'Khác';
 
                                       return ListTile(
-                                        leading: ClipRRect(
+                                        leading: SafeNetworkImage(
+                                          imageUrl: story.coverUrl,
+                                          width: 40,
+                                          height: 50,
+                                          fit: BoxFit.cover,
                                           borderRadius: BorderRadius.circular(4),
-                                          child: Image.network(
-                                            story.coverUrl,
-                                            width: 40,
-                                            height: 50,
-                                            fit: BoxFit.cover,
-                                            errorBuilder: (_, __, ___) => Container(width: 40, height: 50, color: Colors.grey.shade800, child: const Icon(Icons.broken_image, size: 20)),
-                                          ),
                                         ),
                                         title: Text(story.title, style: const TextStyle(fontWeight: FontWeight.bold)),
                                         subtitle: Text('${story.author} • ${state.tGenre(mainTag)} • ${story.chapters.length} chap • 👁️ ${story.viewCount}'),
@@ -256,8 +254,9 @@ class AdminDashboardScreen extends StatelessWidget {
     final coverCtrl = TextEditingController(text: existingStory?.coverUrl ?? '');
     final descCtrl = TextEditingController(text: existingStory?.description ?? '');
     final yearCtrl = TextEditingController(text: (existingStory?.releaseYear ?? 2024).toString());
-    
+
     List<String> selectedTags = List<String>.from(existingStory?.tags ?? ['Tâm linh']);
+    // Cho phép chọn và giữ trạng thái type giữa 'novel' và 'comic'
     String storyType = existingStory?.type ?? 'novel';
     bool isUploading = false;
 
@@ -274,6 +273,34 @@ class AdminDashboardScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // BỘ CHỌN LOẠI TRUYỆN: NOVEL (TRUYỆN CHỮ) HOẶC COMIC (TRUYỆN TRANH)
+                    const Text('Phân loại tác phẩm:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    const SizedBox(height: 6),
+                    SizedBox(
+                      width: double.infinity,
+                      child: SegmentedButton<String>(
+                        segments: const [
+                          ButtonSegment(
+                            value: 'novel',
+                            label: Text('Truyện Chữ (Novel)'),
+                            icon: Icon(Icons.menu_book, size: 16),
+                          ),
+                          ButtonSegment(
+                            value: 'comic',
+                            label: Text('Truyện Tranh (Manga / Comic)'),
+                            icon: Icon(Icons.photo_library, size: 16),
+                          ),
+                        ],
+                        selected: {storyType},
+                        onSelectionChanged: (val) {
+                          setModalState(() {
+                            storyType = val.first;
+                          });
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
                     Row(
                       children: [
                         Expanded(child: TextField(controller: titleCtrl, decoration: InputDecoration(labelText: globalAppState.t('story_title'), border: const OutlineInputBorder()))),
@@ -284,7 +311,7 @@ class AdminDashboardScreen extends StatelessWidget {
                     const SizedBox(height: 12),
                     TextField(controller: authorCtrl, decoration: InputDecoration(labelText: globalAppState.t('author'), border: const OutlineInputBorder())),
                     const SizedBox(height: 12),
-                    
+
                     // CHỌN ẢNH BÌA: BROWSE TẢI LÊN SUPABASE STORAGE
                     Row(
                       children: [
@@ -388,13 +415,20 @@ class AdminDashboardScreen extends StatelessWidget {
                                 author: authorCtrl.text.trim(),
                                 tags: selectedTags.isEmpty ? ['Khác'] : selectedTags,
                                 releaseYear: year,
-                                type: storyType,
+                                type: storyType, // Lưu đúng type được chọn ('novel' hoặc 'comic')
                                 coverUrl: coverCtrl.text.trim().isEmpty ? 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=400&q=80' : coverCtrl.text.trim(),
                                 description: descCtrl.text.trim(),
-                                chapters: [Chapter(title: 'Chương 1: Mở đầu', content: 'Nội dung đang cập nhật...')],
+                                chapters: [
+                                  Chapter(
+                                    title: 'Chương 1: Mở đầu',
+                                    content: storyType == 'novel' ? 'Nội dung đang cập nhật...' : '',
+                                    imageUrls: storyType == 'comic' ? [] : [],
+                                  ),
+                                ],
                               ),
                             );
                           } else {
+                            existingStory.type = storyType; // Đồng bộ type khi sửa
                             globalAppState.updateStory(
                               existingStory.id,
                               titleCtrl.text.trim(),

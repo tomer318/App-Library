@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../../models/models.dart';
 import '../../state/app_state.dart';
+import '../../widgets/safe_network_image.dart';
 
 enum PaperTheme { light, sepia, dark }
 
@@ -240,38 +241,64 @@ class _ReadingScreenState extends State<ReadingScreen> {
     );
   }
 
-  Widget _buildOptimizedImage(int index, String url) {
+  Widget _buildOptimizedImage(BuildContext context, int index, String url) {
     if (_decodedImageCache.containsKey(index)) {
       return Image.memory(
         _decodedImageCache[index]!,
         width: double.infinity,
         fit: BoxFit.fitWidth,
         gaplessPlayback: true,
-        filterQuality: FilterQuality.medium,
-        errorBuilder: (_, __, ___) => const SizedBox(height: 100, child: Center(child: Icon(Icons.broken_image))),
+        errorBuilder: (_, __, ___) => const SizedBox(
+          height: 120,
+          child: Center(child: Icon(Icons.broken_image, color: Colors.grey)),
+        ),
       );
     }
 
-    return Image.network(
-      url,
-      width: double.infinity,
-      fit: BoxFit.fitWidth,
-      gaplessPlayback: true,
-      filterQuality: FilterQuality.medium,
-      loadingBuilder: (context, child, loadingProgress) {
-        if (loadingProgress == null) return child;
-        return Container(
-          height: 350,
-          color: Colors.grey.shade900,
-          alignment: Alignment.center,
-          child: const CircularProgressIndicator(strokeWidth: 2),
-        );
-      },
-      errorBuilder: (_, __, ___) => Container(
-        height: 150,
-        color: Colors.grey.shade900,
-        alignment: Alignment.center,
-        child: const Text('Lỗi tải trang ảnh', style: TextStyle(color: Colors.redAccent)),
+    final screenWidth = MediaQuery.of(context).size.width;
+    final contentWidth = screenWidth > 820 ? 820.0 : screenWidth;
+
+    return SizedBox(
+      width: contentWidth,
+      child: Image.network(
+        url,
+        width: contentWidth,
+        fit: BoxFit.fitWidth,
+        gaplessPlayback: true,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return Container(
+            width: contentWidth,
+            height: 350,
+            color: Colors.black12,
+            child: Center(
+              child: CircularProgressIndicator(
+                value: loadingProgress.expectedTotalBytes != null
+                    ? loadingProgress.cumulativeBytesLoaded /
+                        loadingProgress.expectedTotalBytes!
+                    : null,
+                strokeWidth: 2,
+                color: Colors.deepPurpleAccent,
+              ),
+            ),
+          );
+        },
+        errorBuilder: (_, error, ___) => Container(
+          width: contentWidth,
+          height: 200,
+          color: Colors.black26,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.broken_image, size: 36, color: Colors.grey),
+              const SizedBox(height: 6),
+              Text(
+                'Không thể tải ảnh trang ${index + 1}',
+                style: const TextStyle(color: Colors.grey, fontSize: 12),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -302,13 +329,12 @@ class _ReadingScreenState extends State<ReadingScreen> {
                           'Mục Lục Chương',
                           style: TextStyle(color: Colors.white70, fontSize: 13),
                         ),
-                        // Nút quay lại trang thông tin truyện
                         IconButton(
                           icon: const Icon(Icons.arrow_back, color: Colors.white),
                           tooltip: 'Quay về trang thông tin truyện',
                           onPressed: () {
-                            Navigator.pop(context); // Đóng Drawer
-                            Navigator.pop(context); // Trở về màn hình chi tiết truyện
+                            Navigator.pop(context);
+                            Navigator.pop(context);
                           },
                         ),
                       ],
@@ -331,7 +357,6 @@ class _ReadingScreenState extends State<ReadingScreen> {
                 ),
               ),
             ),
-            // Nút bấm nhanh về trang chi tiết đặt ngay đầu danh sách
             ListTile(
               leading: const Icon(Icons.info_outline, color: Colors.deepPurpleAccent),
               title: const Text('Thông tin truyện & đánh giá'),
@@ -342,7 +367,6 @@ class _ReadingScreenState extends State<ReadingScreen> {
               },
             ),
             const Divider(height: 1),
-            // Danh sách các chương
             Expanded(
               child: ListView.builder(
                 padding: EdgeInsets.zero,
@@ -372,52 +396,49 @@ class _ReadingScreenState extends State<ReadingScreen> {
         ),
       ),
 
-      // 2. APPBAR VỚI ICON 3 GẠCH (☰) MẶC ĐỊNH
+      // 2. APPBAR
       appBar: showControls
           ? AppBar(
-        backgroundColor: _bgColor,
-        elevation: 1,
-        iconTheme: IconThemeData(color: _textColor),
-        // Không truyền leading -> Flutter sẽ tự động hiển thị icon 3 gạch mở Drawer
-        title: Text(chapter.title, style: TextStyle(color: _textColor, fontSize: 16)),
-        actions: [
-          // Nút bật/tắt Tự Động Cuộn
-          IconButton(
-            icon: Icon(isAutoScrolling ? Icons.pause_circle_filled : Icons.play_circle_outline),
-            color: isAutoScrolling ? Colors.greenAccent : null,
-            tooltip: isAutoScrolling ? 'Dừng tự động cuộn' : 'Bật tự động cuộn',
-            onPressed: _toggleAutoScroll,
-          ),
-          IconButton(
-            icon: const Icon(Icons.chat_bubble_outline),
-            tooltip: 'Bình luận',
-            onPressed: () => _openCommentsSheet(context),
-          ),
-          if (!isComic) ...[
-            IconButton(
-              icon: const Icon(Icons.text_decrease),
-              onPressed: fontSize > 13 ? () => setState(() => fontSize -= 1.5) : null,
-            ),
-            IconButton(
-              icon: const Icon(Icons.text_increase),
-              onPressed: fontSize < 30 ? () => setState(() => fontSize += 1.5) : null,
-            ),
-          ],
-          PopupMenuButton<PaperTheme>(
-            icon: const Icon(Icons.color_lens_outlined),
-            onSelected: (theme) => setState(() => paperTheme = theme),
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: PaperTheme.light, child: Text('Giấy Trắng')),
-              PopupMenuItem(value: PaperTheme.sepia, child: Text('Giấy Vàng Sepia')),
-              PopupMenuItem(value: PaperTheme.dark, child: Text('Giấy Đen Dark')),
-            ],
-          ),
-        ],
-      )
-    : null,
+              backgroundColor: _bgColor,
+              elevation: 1,
+              iconTheme: IconThemeData(color: _textColor),
+              title: Text(chapter.title, style: TextStyle(color: _textColor, fontSize: 16)),
+              actions: [
+                IconButton(
+                  icon: Icon(isAutoScrolling ? Icons.pause_circle_filled : Icons.play_circle_outline),
+                  color: isAutoScrolling ? Colors.greenAccent : null,
+                  tooltip: isAutoScrolling ? 'Dừng tự động cuộn' : 'Bật tự động cuộn',
+                  onPressed: _toggleAutoScroll,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.chat_bubble_outline),
+                  tooltip: 'Bình luận',
+                  onPressed: () => _openCommentsSheet(context),
+                ),
+                if (!isComic) ...[
+                  IconButton(
+                    icon: const Icon(Icons.text_decrease),
+                    onPressed: fontSize > 13 ? () => setState(() => fontSize -= 1.5) : null,
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.text_increase),
+                    onPressed: fontSize < 30 ? () => setState(() => fontSize += 1.5) : null,
+                  ),
+                ],
+                PopupMenuButton<PaperTheme>(
+                  icon: const Icon(Icons.color_lens_outlined),
+                  onSelected: (theme) => setState(() => paperTheme = theme),
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(value: PaperTheme.light, child: Text('Giấy Trắng')),
+                    PopupMenuItem(value: PaperTheme.sepia, child: Text('Giấy Vàng Sepia')),
+                    PopupMenuItem(value: PaperTheme.dark, child: Text('Giấy Đen Dark')),
+                  ],
+                ),
+              ],
+            )
+          : null,
 
       body: GestureDetector(
-        // Chạm vào màn hình đọc để ẩn hoặc hiện thanh công cụ
         onTap: () => setState(() => showControls = !showControls),
         behavior: HitTestBehavior.translucent,
         child: Column(
@@ -453,18 +474,16 @@ class _ReadingScreenState extends State<ReadingScreen> {
                   constraints: BoxConstraints(maxWidth: isComic ? 820 : 750),
                   child: isComic
                       ? ListView.builder(
+                          key: ValueKey('comic-chap-$currentChapterIndex'),
                           controller: _scrollController,
                           physics: const ClampingScrollPhysics(),
-                          cacheExtent: 3000,
                           padding: EdgeInsets.zero,
                           itemCount: chapter.imageUrls.length + 1,
                           itemBuilder: (context, index) {
-                            // CÁC TRANG ẢNH
                             if (index < chapter.imageUrls.length) {
-                              return _buildOptimizedImage(index, chapter.imageUrls[index]);
+                              return _buildOptimizedImage(context, index, chapter.imageUrls[index]);
                             }
 
-                            // BANNER CHUYỂN CHƯƠNG KHI CUỘN ĐẾN CUỐI TRANG
                             final hasNext = currentChapterIndex < widget.story.chapters.length - 1;
                             return Container(
                               padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 20),
@@ -473,7 +492,7 @@ class _ReadingScreenState extends State<ReadingScreen> {
                                 children: [
                                   Text(
                                     hasNext ? 'Bạn đã đọc hết ${chapter.title}' : 'Bạn đã đọc đến chương mới nhất!',
-                                    style: TextStyle(color: Colors.grey, fontSize: 13),
+                                    style: const TextStyle(color: Colors.grey, fontSize: 13),
                                   ),
                                   const SizedBox(height: 16),
                                   if (hasNext)
@@ -524,7 +543,6 @@ class _ReadingScreenState extends State<ReadingScreen> {
                               const SizedBox(height: 30),
                               const Divider(),
                               const SizedBox(height: 16),
-                              // NÚT CHUYỂN NHANH CHƯƠNG CUỐI TRANG
                               if (currentChapterIndex < widget.story.chapters.length - 1)
                                 SizedBox(
                                   width: double.infinity,
@@ -554,7 +572,6 @@ class _ReadingScreenState extends State<ReadingScreen> {
                 ),
               ),
             ),
-            // THANH ĐIỀU HƯỚNG ĐÁY & THANH TRƯỢT NHẢY CHƯƠNG NHANH
             if (showControls)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -568,7 +585,6 @@ class _ReadingScreenState extends State<ReadingScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Thanh trượt kéo nhảy nhanh chương
                     if (widget.story.chapters.length > 1)
                       Row(
                         children: [

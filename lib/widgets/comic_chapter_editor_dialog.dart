@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
+import '../services/supabase_service.dart';
+import 'safe_network_image.dart';
 
 class ComicChapterEditorDialog extends StatefulWidget {
   final Story story;
@@ -24,6 +26,8 @@ class _ComicChapterEditorDialogState extends State<ComicChapterEditorDialog> {
   final ImagePicker _picker = ImagePicker();
   List<String> pages = [];
   bool isLoadingFiles = false;
+  bool isSaving = false;
+  String loadingProgress = '';
 
   @override
   void initState() {
@@ -45,9 +49,12 @@ class _ComicChapterEditorDialogState extends State<ComicChapterEditorDialog> {
     super.dispose();
   }
 
-  // CHỌN NHIỀU ẢNH TỪ MÁY (UBUNTU / LINUX BROWSER)
+  // CHỌN NHIỀU ẢNH TỪ MÁY VÀ ĐẨY TRỰC TIẾP LÊN SUPABASE STORAGE BUCKET 'comic_pages'
   Future<void> _pickImagesFromDevice() async {
-    setState(() => isLoadingFiles = true);
+    setState(() {
+      isLoadingFiles = true;
+      loadingProgress = 'Đang chọn ảnh...';
+    });
 
     try {
       final List<XFile> pickedFiles = await _picker.pickMultiImage();
@@ -56,27 +63,52 @@ class _ComicChapterEditorDialogState extends State<ComicChapterEditorDialog> {
         final sortedList = pickedFiles.toList()
           ..sort((a, b) => a.name.compareTo(b.name));
 
-        final List<String> newBase64Images = [];
-        for (var file in sortedList) {
-          final bytes = await file.readAsBytes();
-          final ext = file.name.split('.').last.toLowerCase();
-          final base64String = base64Encode(bytes);
-          final dataUri = 'data:image/$ext;base64,$base64String';
-          newBase64Images.add(dataUri);
-        }
-
         setState(() {
-          pages.addAll(newBase64Images);
+          loadingProgress = 'Đang tải lên Supabase Storage (0/${sortedList.length})...';
         });
+
+        int completed = 0;
+        final uploadFutures = sortedList.map((file) async {
+          final bytes = await file.readAsBytes();
+          final url = await SupabaseService.uploadChapterImage(
+            storyId: widget.story.id,
+            bytes: bytes,
+            fileName: file.name,
+          );
+          completed++;
+          if (mounted) {
+            setState(() {
+              loadingProgress = 'Đang tải lên Supabase Storage ($completed/${sortedList.length})...';
+            });
+          }
+          return url;
+        }).toList();
+
+        final results = await Future.wait(uploadFutures);
+        final validUrls = results.whereType<String>().toList();
+
+        if (mounted) {
+          setState(() {
+            pages.addAll(validUrls);
+          });
+        }
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi khi tải ảnh: $e')),
+          SnackBar(
+            content: Text('Lỗi khi tải ảnh lên Storage: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
         );
       }
     } finally {
-      if (mounted) setState(() => isLoadingFiles = false);
+      if (mounted) {
+        setState(() {
+          isLoadingFiles = false;
+          loadingProgress = '';
+        });
+      }
     }
   }
 
@@ -104,7 +136,7 @@ class _ComicChapterEditorDialogState extends State<ComicChapterEditorDialog> {
     });
   }
 
-  Widget _buildImageWidget(String pathOrUrl, {double? width, double? height, BoxFit fit = BoxFit.cover}) {
+  Widget _buildImageWidget(String pathOrUrl, {double? width, double? height, BoxFit fit = BoxFit.contain}) {
     if (pathOrUrl.startsWith('data:image')) {
       final base64Content = pathOrUrl.split(',').last;
       return Image.memory(
@@ -115,12 +147,44 @@ class _ComicChapterEditorDialogState extends State<ComicChapterEditorDialog> {
         errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 24),
       );
     }
-    return Image.network(
-      pathOrUrl,
+
+    // Nếu ở cột Preview cuộn dọc (không có height cố định)
+    if (height == null) {
+      return Image.network(
+        pathOrUrl,
+        width: width ?? double.infinity,
+        fit: BoxFit.fitWidth,
+        gaplessPlayback: true,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return Container(
+            height: 250,
+            color: Colors.black12,
+            child: const Center(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.deepPurpleAccent),
+              ),
+            ),
+          );
+        },
+        errorBuilder: (_, __, ___) => Container(
+          height: 120,
+          color: Colors.black26,
+          child: const Center(
+            child: Icon(Icons.broken_image, size: 28, color: Colors.grey),
+          ),
+        ),
+      );
+    }
+
+    // Thumbnail nhỏ ở danh sách trang bên trái (có height và width xác định)
+    return SafeNetworkImage(
+      imageUrl: pathOrUrl,
       width: width,
       height: height,
-      fit: fit,
-      errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 24),
+      fit: BoxFit.cover,
     );
   }
 
@@ -158,13 +222,14 @@ class _ComicChapterEditorDialogState extends State<ComicChapterEditorDialog> {
                     ],
                   ),
                 ),
-                IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
+                IconButton(icon: const Icon(Icons.close), onPressed: isSaving ? null : () => Navigator.pop(context)),
               ],
             ),
             const Divider(height: 16),
 
             TextField(
               controller: titleCtrl,
+              enabled: !isSaving,
               decoration: InputDecoration(
                 labelText: globalAppState.t('chapter_title'),
                 prefixIcon: const Icon(Icons.title),
@@ -192,11 +257,15 @@ class _ComicChapterEditorDialogState extends State<ComicChapterEditorDialog> {
                               children: [
                                 Expanded(
                                   child: FilledButton.icon(
-                                    onPressed: isLoadingFiles ? null : _pickImagesFromDevice,
+                                    onPressed: (isLoadingFiles || isSaving) ? null : _pickImagesFromDevice,
                                     icon: isLoadingFiles
-                                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                        ? const SizedBox(
+                                            width: 16,
+                                            height: 16,
+                                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                          )
                                         : const Icon(Icons.folder_open),
-                                    label: Text(isLoadingFiles ? globalAppState.t('reading_images') : globalAppState.t('browse_device')),
+                                    label: Text(isLoadingFiles ? loadingProgress : globalAppState.t('browse_device')),
                                     style: FilledButton.styleFrom(backgroundColor: Colors.deepPurple),
                                   ),
                                 ),
@@ -208,6 +277,7 @@ class _ComicChapterEditorDialogState extends State<ComicChapterEditorDialog> {
                                 Expanded(
                                   child: TextField(
                                     controller: urlInputCtrl,
+                                    enabled: !isSaving,
                                     decoration: InputDecoration(
                                       hintText: globalAppState.t('or_image_url'),
                                       border: const OutlineInputBorder(),
@@ -219,7 +289,7 @@ class _ComicChapterEditorDialogState extends State<ComicChapterEditorDialog> {
                                 ),
                                 const SizedBox(width: 6),
                                 OutlinedButton(
-                                  onPressed: _addPagesFromUrl,
+                                  onPressed: isSaving ? null : _addPagesFromUrl,
                                   child: Text(globalAppState.t('add_link')),
                                 ),
                               ],
@@ -228,11 +298,17 @@ class _ComicChapterEditorDialogState extends State<ComicChapterEditorDialog> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Text('${globalAppState.t('page_list')} (${pages.length}):', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                                Text(
+                                  '${globalAppState.t('page_list')} (${pages.length}):',
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                ),
                                 if (pages.isNotEmpty)
                                   TextButton(
-                                    onPressed: () => setState(() => pages.clear()),
-                                    child: Text(globalAppState.t('clear_all'), style: const TextStyle(color: Colors.redAccent, fontSize: 12)),
+                                    onPressed: isSaving ? null : () => setState(() => pages.clear()),
+                                    child: Text(
+                                      globalAppState.t('clear_all'),
+                                      style: const TextStyle(color: Colors.redAccent, fontSize: 12),
+                                    ),
                                   ),
                               ],
                             ),
@@ -249,7 +325,7 @@ class _ComicChapterEditorDialogState extends State<ComicChapterEditorDialog> {
                                           Text(globalAppState.t('no_pages_yet'), style: const TextStyle(color: Colors.grey)),
                                           const SizedBox(height: 8),
                                           OutlinedButton.icon(
-                                            onPressed: _pickImagesFromDevice,
+                                            onPressed: isSaving ? null : _pickImagesFromDevice,
                                             icon: const Icon(Icons.upload_file),
                                             label: Text(globalAppState.t('browse_device')),
                                           ),
@@ -280,7 +356,10 @@ class _ComicChapterEditorDialogState extends State<ComicChapterEditorDialog> {
                                                 ),
                                               ],
                                             ),
-                                            title: Text('${globalAppState.t('page_number_prefix')} ${index + 1}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                                            title: Text(
+                                              '${globalAppState.t('page_number_prefix')} ${index + 1}',
+                                              style: const TextStyle(fontWeight: FontWeight.bold),
+                                            ),
                                             subtitle: Text(
                                               isBase64 ? globalAppState.t('device_image_label') : item,
                                               maxLines: 1,
@@ -290,7 +369,7 @@ class _ComicChapterEditorDialogState extends State<ComicChapterEditorDialog> {
                                             trailing: IconButton(
                                               icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 18),
                                               tooltip: globalAppState.t('clear_all'),
-                                              onPressed: () => setState(() => pages.removeAt(index)),
+                                              onPressed: isSaving ? null : () => setState(() => pages.removeAt(index)),
                                             ),
                                           ),
                                         );
@@ -305,7 +384,7 @@ class _ComicChapterEditorDialogState extends State<ComicChapterEditorDialog> {
 
                   const SizedBox(width: 12),
 
-                  // CỘT PHẢI: PREVIEW CUỘN DỌC LIÊN TỤC
+                  // CỘT PHẢI: PREVIEW CUỘN DỌC LIÊN TỤC KHÔNG KHOẢNG HỞ
                   Expanded(
                     flex: 5,
                     child: Card(
@@ -334,12 +413,12 @@ class _ComicChapterEditorDialogState extends State<ComicChapterEditorDialog> {
                                       return Stack(
                                         alignment: Alignment.topRight,
                                         children: [
-                                          _buildImageWidget(pages[index], width: double.infinity, fit: BoxFit.fitWidth),
+                                          _buildImageWidget(pages[index]),
                                           Container(
                                             margin: const EdgeInsets.all(6),
-                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                             decoration: BoxDecoration(
-                                              color: Colors.black.withValues(alpha: 0.75),
+                                              color: Colors.black87,
                                               borderRadius: BorderRadius.circular(4),
                                             ),
                                             child: Text(
@@ -361,37 +440,72 @@ class _ComicChapterEditorDialogState extends State<ComicChapterEditorDialog> {
             ),
             const SizedBox(height: 10),
 
+            // BƯỚC 3 ĐÃ SỬA: ASYNC-AWAIT VỚI TIẾN TRÌNH LƯU
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                TextButton(onPressed: () => Navigator.pop(context), child: Text(globalAppState.t('cancel'))),
+                TextButton(
+                  onPressed: isSaving ? null : () => Navigator.pop(context),
+                  child: Text(globalAppState.t('cancel')),
+                ),
                 const SizedBox(width: 10),
                 FilledButton.icon(
-                  icon: const Icon(Icons.save, size: 18),
-                  label: Text(widget.editChapterIndex == null ? globalAppState.t('publish_chapter') : globalAppState.t('save_changes')),
-                  onPressed: () {
-                    if (titleCtrl.text.trim().isNotEmpty && pages.isNotEmpty) {
-                      if (widget.editChapterIndex == null) {
-                        globalAppState.addChapterToStory(
-                          widget.story.id,
-                          titleCtrl.text.trim(),
-                          imageUrls: pages,
-                        );
-                      } else {
-                        globalAppState.updateChapter(
-                          widget.story.id,
-                          widget.editChapterIndex!,
-                          titleCtrl.text.trim(),
-                          imageUrls: pages,
-                        );
-                      }
-                      Navigator.pop(context);
-                    } else if (pages.isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(globalAppState.t('alert_add_least_one'))),
-                      );
-                    }
-                  },
+                  icon: isSaving
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Icon(Icons.save, size: 18),
+                  label: Text(
+                    isSaving
+                        ? 'Đang lưu lên Cloud...'
+                        : (widget.editChapterIndex == null
+                            ? globalAppState.t('publish_chapter')
+                            : globalAppState.t('save_changes')),
+                  ),
+                  onPressed: isSaving
+                      ? null
+                      : () async {
+                          final title = titleCtrl.text.trim();
+                          if (title.isNotEmpty && pages.isNotEmpty) {
+                            setState(() => isSaving = true);
+                            try {
+                              if (widget.editChapterIndex == null) {
+                                await globalAppState.addChapterToStory(
+                                  widget.story.id,
+                                  title,
+                                  imageUrls: pages,
+                                );
+                              } else {
+                                await globalAppState.updateChapter(
+                                  widget.story.id,
+                                  widget.editChapterIndex!,
+                                  title,
+                                  imageUrls: pages,
+                                );
+                              }
+                              if (context.mounted) {
+                                Navigator.pop(context);
+                              }
+                            } catch (e) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Lỗi khi lưu chương: $e'),
+                                    backgroundColor: Colors.redAccent,
+                                  ),
+                                );
+                              }
+                            } finally {
+                              if (mounted) setState(() => isSaving = false);
+                            }
+                          } else if (pages.isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(globalAppState.t('alert_add_least_one'))),
+                            );
+                          }
+                        },
                 ),
               ],
             ),

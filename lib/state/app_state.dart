@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/models.dart';
 import '../services/supabase_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AppState extends ChangeNotifier {
   ThemeMode themeMode = ThemeMode.dark;
@@ -97,10 +98,27 @@ class AppState extends ChangeNotifier {
     defaultFontSize = prefs.getDouble('fontSize') ?? 18.0;
     fontFamily = prefs.getString('fontFamily') ?? 'Mặc định';
 
-    // 2. Tải phiên đăng nhập người dùng hiện tại
-    final currentUserRaw = prefs.getString('currentUser');
-    if (currentUserRaw != null) {
-      currentUser = AppUser.fromJson(jsonDecode(currentUserRaw));
+    // 2. Tải phiên đăng nhập: ưu tiên lấy từ Supabase Auth session
+    try {
+      final cloudProfile = await SupabaseService.getCurrentProfile();
+      if (cloudProfile != null) {
+        currentUser = cloudProfile;
+      } else {
+        final currentUserRaw = prefs.getString('currentUser');
+        if (currentUserRaw != null) {
+          currentUser = AppUser.fromJson(jsonDecode(currentUserRaw));
+        }
+      }
+    } catch (e) {
+      debugPrint('Lỗi tải phiên đăng nhập Supabase Auth: $e');
+    }
+
+    // Tải và gán ratings từ Cloud vào các truyện
+    final cloudRatings = await SupabaseService.fetchAllRatings();
+    for (var s in stories) {
+      if (cloudRatings.containsKey(s.id)) {
+        s.ratings = cloudRatings[s.id]!;
+      }
     }
 
     // 3. TẢI DỮ LIỆU TỪ SUPABASE CLOUD
@@ -117,22 +135,40 @@ class AppState extends ChangeNotifier {
         ];
       }
 
-      // Tải danh sách Truyện từ Supabase
+      // Tải danh sách Truyện từ Supabase trước
       final cloudStories = await SupabaseService.fetchStories();
       if (cloudStories.isNotEmpty) {
         stories = cloudStories;
       } else {
-        // Nếu Database mới tinh chưa có truyện, tự động nạp các bộ truyện mẫu ban đầu lên Cloud
         stories = _getInitialStories();
         for (var s in stories) {
           await SupabaseService.saveStory(s, isNew: true);
         }
       }
+
+      // === NẠP RATINGS TỪ CLOUD (ĐẶT SAU KHI ĐÃ CÓ STORIES) ===
+      try {
+        final cloudRatings = await SupabaseService.fetchAllRatings();
+        for (var s in stories) {
+          if (cloudRatings.containsKey(s.id)) {
+            s.ratings = List<int>.from(cloudRatings[s.id]!);
+          }
+        }
+      } catch (e) {
+        debugPrint('Lỗi nạp ratings: $e');
+      }
+
     } catch (e) {
       debugPrint('Lỗi kết nối Supabase, chuyển sang chế độ dự phòng cục bộ: $e');
       if (stories.isEmpty) {
         stories = _getInitialStories();
       }
+    }
+
+    // Tải bình luận từ Cloud
+    final cloudComments = await SupabaseService.fetchComments();
+    if (cloudComments.isNotEmpty) {
+      allComments = cloudComments;
     }
 
     // 4. Tải danh sách yêu thích và lịch sử đọc
@@ -357,68 +393,121 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<String?> login(String username, String password) async {
-    // 1. Tải danh sách user mới nhất từ Supabase để đảm bảo dữ liệu luôn tươi mới
+  Future<String?> login(String emailOrUsername, String password) async {
     try {
-      final cloudUsers = await SupabaseService.fetchUsers();
-      if (cloudUsers.isNotEmpty) {
-        registeredUsers = cloudUsers;
+      // Hỗ trợ nhập email trực tiếp hoặc username (nếu là username ta ghép domain local)
+      String email = emailOrUsername.trim();
+      if (!email.contains('@')) {
+        email = '${email.toLowerCase()}@gmail.com';
       }
-    } catch (_) {}
 
-    final user = registeredUsers.cast<AppUser?>().firstWhere(
-      (u) => u?.username.toLowerCase() == username.trim().toLowerCase(),
-      orElse: () => null,
-    );
+      final res = await SupabaseService.signIn(
+        email: email,
+        password: password,
+      );
 
-    if (user == null) return 'Tài khoản không tồn tại trên hệ thống!';
-    if (user.password != password) return 'Mật khẩu không chính xác!';
+      if (res.user != null) {
+        // Lấy profile từ bảng profiles (đã được tạo bởi trigger)
+        final profile = await SupabaseService.getCurrentProfile();
+        currentUser = profile ?? AppUser(
+          id: res.user!.id,
+          username: res.user!.userMetadata?['username'] ?? emailOrUsername.trim(),
+          password: '',
+          role: res.user!.userMetadata?['role'] ?? 'reader',
+        );
 
-    currentUser = user;
-    await _saveUsers();
-    notifyListeners();
-    return null;
+        await _saveUsers();
+        notifyListeners();
+        return null;
+      }
+      return 'Đăng nhập không thành công!';
+    } on AuthException catch (e) {
+      if (e.message.contains('Invalid login credentials')) {
+        return 'Tài khoản hoặc mật khẩu không chính xác!';
+      }
+      return e.message;
+    } catch (e) {
+      return 'Lỗi kết nối: $e';
+    }
   }
 
-  Future<String?> register(String username, String password, {bool makeAdmin = false}) async {
-    final exists = registeredUsers.any(
-      (u) => u.username.toLowerCase() == username.trim().toLowerCase(),
-    );
-    if (exists) return 'Tên đăng nhập đã được sử dụng!';
-    if (password.length < 3) return 'Mật khẩu phải từ 3 ký tự trở lên!';
+  Future<String?> register({
+    required String email,
+    required String username,
+    required String password,
+    bool makeAdmin = false,
+  }) async {
+    final cleanEmail = email.trim().toLowerCase();
+    final cleanUsername = username.trim();
 
-    final newUser = AppUser(
-      id: 'u_${DateTime.now().millisecondsSinceEpoch}',
-      username: username.trim(),
-      password: password,
-      role: makeAdmin ? 'admin' : 'reader',
-    );
-    registeredUsers.add(newUser);
-    currentUser = newUser;
-    notifyListeners();
+    if (!cleanEmail.contains('@') || !cleanEmail.contains('.')) {
+      return 'Định dạng Email không hợp lệ!';
+    }
+    if (cleanUsername.length < 3) {
+      return 'Tên hiển thị phải từ 3 ký tự trở lên!';
+    }
+    if (password.length < 6) {
+      return 'Mật khẩu Supabase Auth yêu cầu tối thiểu 6 ký tự!';
+    }
 
-    await SupabaseService.registerUser(newUser);
-    _saveUsers();
-    return null;
+    try {
+      final role = makeAdmin ? 'admin' : 'reader';
+
+      final res = await SupabaseService.signUp(
+        email: cleanEmail,
+        password: password,
+        username: cleanUsername,
+        role: role,
+      );
+
+      if (res.user != null) {
+        await Future.delayed(const Duration(milliseconds: 300));
+
+        final profile = await SupabaseService.getCurrentProfile();
+        currentUser = profile ?? AppUser(
+          id: res.user!.id,
+          username: cleanUsername,
+          password: '',
+          role: role,
+        );
+
+        await _saveUsers();
+        notifyListeners();
+        return null;
+      }
+      return 'Đăng ký không thành công!';
+    } on AuthException catch (e) {
+      if (e.message.contains('already registered') || e.message.contains('User already registered')) {
+        return 'Email này đã được đăng ký tài khoản!';
+      }
+      return e.message;
+    } catch (e) {
+      return 'Lỗi đăng ký: $e';
+    }
   }
 
-  void becomeAuthor() {
+  Future<void> logout() async {
+    currentUser = null;
+    await SupabaseService.signOut();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('currentUser');
+    notifyListeners();
+  }
+
+  Future<void> becomeAuthor() async {
     if (currentUser != null && currentUser!.role == 'reader') {
       currentUser!.role = 'author';
       final idx = registeredUsers.indexWhere((u) => u.id == currentUser!.id);
       if (idx != -1) registeredUsers[idx] = currentUser!;
       _saveUsers();
       notifyListeners();
+
+      // Đồng bộ lên Supabase Cloud
+      await SupabaseService.updateUserRole(userId: currentUser!.id, role: 'author');
     }
   }
 
-  void logout() {
-    currentUser = null;
-    _saveUsers();
-    notifyListeners();
-  }
-
-  void updateProfile(String newName, String newBio) {
+  Future<void> updateProfile(String newName, String newBio) async {
     if (currentUser != null) {
       currentUser!.username = newName;
       currentUser!.bio = newBio;
@@ -426,6 +515,13 @@ class AppState extends ChangeNotifier {
       if (idx != -1) registeredUsers[idx] = currentUser!;
       _saveUsers();
       notifyListeners();
+
+      // Đồng bộ lên Supabase Cloud
+      await SupabaseService.updateProfile(
+        userId: currentUser!.id,
+        username: newName,
+        bio: newBio,
+      );
     }
   }
 
@@ -458,18 +554,28 @@ class AppState extends ChangeNotifier {
     await SupabaseService.toggleFavorite(userId, storyId, isFav);
   }
 
-  void rateStory(String storyId, int rating) {
-    final story = stories.firstWhere((s) => s.id == storyId);
-    story.ratings.add(rating);
-    _saveStories();
-    notifyListeners();
+  Future<void> rateStory(String storyId, int rating) async {
+    final storyIndex = stories.indexWhere((s) => s.id == storyId);
+    if (storyIndex != -1) {
+      stories[storyIndex].ratings.add(rating);
+      _saveStories();
+      notifyListeners();
+
+      if (currentUser != null) {
+        await SupabaseService.submitRating(
+          storyId: storyId,
+          userId: currentUser!.id,
+          rating: rating,
+        );
+      }
+    }
   }
 
   List<Comment> getCommentsForChapter(String storyId, int chapIndex) {
     return allComments.where((c) => c.storyId == storyId && c.chapterIndex == chapIndex).toList();
   }
 
-  void addComment(String storyId, int chapIndex, String content) {
+  Future<void> addComment(String storyId, int chapIndex, String content) async {
     final username = currentUser?.username ?? 'Khách';
     final comment = Comment(
       id: 'c_${DateTime.now().millisecondsSinceEpoch}',
@@ -482,15 +588,19 @@ class AppState extends ChangeNotifier {
     allComments.insert(0, comment);
     _saveComments();
     notifyListeners();
+
+    await SupabaseService.insertComment(comment, currentUser?.id);
   }
 
-  void deleteComment(String commentId) {
+  Future<void> deleteComment(String commentId) async {
     allComments.removeWhere((c) => c.id == commentId);
     _saveComments();
     notifyListeners();
+
+    await SupabaseService.deleteComment(commentId);
   }
 
-  void toggleLikeComment(String commentId) {
+  Future<void> toggleLikeComment(String commentId) async {
     final username = currentUser?.username ?? 'Khách';
     final idx = allComments.indexWhere((c) => c.id == commentId);
     if (idx != -1) {
@@ -502,15 +612,19 @@ class AppState extends ChangeNotifier {
       }
       _saveComments();
       notifyListeners();
+
+      await SupabaseService.updateCommentInteraction(comment.id, comment.likedUsernames, comment.reportCount);
     }
   }
 
-  void reportComment(String commentId) {
+  Future<void> reportComment(String commentId) async {
     final idx = allComments.indexWhere((c) => c.id == commentId);
     if (idx != -1) {
       allComments[idx].reportCount++;
       _saveComments();
       notifyListeners();
+
+      await SupabaseService.updateCommentInteraction(allComments[idx].id, allComments[idx].likedUsernames, allComments[idx].reportCount);
     }
   }
 
@@ -528,7 +642,7 @@ class AppState extends ChangeNotifier {
     s.tags = tags;
     s.releaseYear = year;
     s.status = status;
-    s.coverUrl = cover;
+    s.coverUrl = cover; // <-- Đảm bảo dòng này gán đúng cover
     s.description = desc;
     s.updatedAt = DateTime.now();
     notifyListeners();
@@ -552,7 +666,7 @@ class AppState extends ChangeNotifier {
     _saveStories();
   }
 
-  void updateChapter(String storyId, int chapIndex, String chapTitle, {String content = '', List<String>? imageUrls}) {
+  Future<void> updateChapter(String storyId, int chapIndex, String chapTitle, {String content = '', List<String>? imageUrls}) async {
     final s = stories.firstWhere((element) => element.id == storyId);
     if (chapIndex >= 0 && chapIndex < s.chapters.length) {
       s.chapters[chapIndex].title = chapTitle;
@@ -563,16 +677,31 @@ class AppState extends ChangeNotifier {
       s.updatedAt = DateTime.now();
       _saveStories();
       notifyListeners();
+
+      // Đồng bộ trực tiếp lên Supabase Cloud Database
+      await SupabaseService.updateChapter(
+        storyId: storyId,
+        chapterIndex: chapIndex,
+        title: chapTitle,
+        content: content,
+        imageUrls: imageUrls,
+      );
     }
   }
 
-  void deleteChapter(String storyId, int chapIndex) {
+  Future<void> deleteChapter(String storyId, int chapIndex) async {
     final s = stories.firstWhere((element) => element.id == storyId);
     if (chapIndex >= 0 && chapIndex < s.chapters.length) {
       s.chapters.removeAt(chapIndex);
       s.updatedAt = DateTime.now();
       _saveStories();
       notifyListeners();
+
+      // Đồng bộ xóa trên Supabase Cloud Database
+      await SupabaseService.deleteChapter(
+        storyId: storyId,
+        chapterIndex: chapIndex,
+      );
     }
   }
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../models/models.dart';
 import '../../state/app_state.dart';
 import '../../widgets/auth_dialog.dart';
+import '../../widgets/safe_network_image.dart';
 import '../detail/story_detail_screen.dart';
 import '../reader/reading_screen.dart';
 
@@ -89,9 +90,23 @@ class FavoritesScreen extends StatelessWidget {
                                     return Card(
                                       margin: const EdgeInsets.symmetric(vertical: 6),
                                       child: ListTile(
-                                        leading: ClipRRect(
-                                          borderRadius: BorderRadius.circular(4),
-                                          child: Image.network(story.coverUrl, width: 45, height: 60, fit: BoxFit.cover),
+                                        leading: SizedBox(
+                                          width: 48,
+                                          height: 64,
+                                          child: ClipRRect(
+                                            borderRadius: BorderRadius.circular(4),
+                                            child: story.coverUrl.trim().isEmpty
+                                                ? Container(
+                                                    color: Colors.grey.shade800,
+                                                    child: const Icon(Icons.menu_book, size: 24, color: Colors.grey),
+                                                  )
+                                                : SafeNetworkImage(
+                                                    imageUrl: story.coverUrl,
+                                                    width: 48,
+                                                    height: 64,
+                                                    fit: BoxFit.cover,
+                                                  ),
+                                          ),
                                         ),
                                         title: Text(story.title, style: const TextStyle(fontWeight: FontWeight.bold)),
                                         subtitle: Text('${story.author} • ${story.genre} • ${story.status}'),
@@ -136,7 +151,10 @@ class FavoritesScreen extends StatelessWidget {
                                         itemCount: historyItems.length,
                                         itemBuilder: (context, index) {
                                           final item = historyItems[index];
-                                          final story = state.stories.firstWhere((s) => s.id == item.storyId, orElse: () => state.stories.first);
+                                          final story = state.stories.firstWhere(
+                                            (s) => s.id == item.storyId,
+                                            orElse: () => state.stories.first,
+                                          );
                                           final chapter = (item.chapterIndex < story.chapters.length)
                                               ? story.chapters[item.chapterIndex]
                                               : story.chapters.first;
@@ -144,9 +162,23 @@ class FavoritesScreen extends StatelessWidget {
                                           return Card(
                                             margin: const EdgeInsets.symmetric(vertical: 6),
                                             child: ListTile(
-                                              leading: ClipRRect(
-                                                borderRadius: BorderRadius.circular(4),
-                                                child: Image.network(story.coverUrl, width: 45, height: 60, fit: BoxFit.cover),
+                                              leading: SizedBox(
+                                                width: 48,
+                                                height: 64,
+                                                child: ClipRRect(
+                                                  borderRadius: BorderRadius.circular(4),
+                                                  child: story.coverUrl.trim().isEmpty
+                                                      ? Container(
+                                                          color: Colors.grey.shade800,
+                                                          child: const Icon(Icons.menu_book, size: 24, color: Colors.grey),
+                                                        )
+                                                      : SafeNetworkImage(
+                                                          imageUrl: story.coverUrl,
+                                                          width: 48,
+                                                          height: 64,
+                                                          fit: BoxFit.cover,
+                                                        ),
+                                                ),
                                               ),
                                               title: Text(story.title, style: const TextStyle(fontWeight: FontWeight.bold)),
                                               subtitle: Text('Đang đọc: ${chapter.title}\nLúc: ${_formatDate(item.lastReadAt)}'),

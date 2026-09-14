@@ -4,6 +4,7 @@ import '../../models/models.dart';
 import '../../state/app_state.dart';
 import '../detail/story_detail_screen.dart';
 import '../../widgets/advanced_search_dialog.dart';
+import '../../widgets/safe_network_image.dart';
 
 class ExploreScreen extends StatelessWidget {
   const ExploreScreen({super.key});
@@ -207,36 +208,10 @@ class ExploreScreen extends StatelessWidget {
                                                 child: const Icon(Icons.menu_book, size: 40, color: Colors.grey),
                                               )
                                             else
-                                              Image.network(
-                                                story.coverUrl,
+                                              SafeNetworkImage(
+                                                imageUrl: story.coverUrl,
                                                 fit: BoxFit.cover,
-                                                headers: const {'Accept': 'image/*'},
-                                                loadingBuilder: (context, child, loadingProgress) {
-                                                  if (loadingProgress == null) return child;
-                                                  return const ShimmerEffect(
-                                                    width: double.infinity,
-                                                    height: double.infinity,
-                                                    borderRadius: 0,
-                                                  );
-                                                },
-                                                errorBuilder: (context, error, stackTrace) => Container(
-                                                  color: Colors.grey.shade900,
-                                                  child: Column(
-                                                    mainAxisAlignment: MainAxisAlignment.center,
-                                                    children: [
-                                                      Icon(
-                                                        story.type == 'comic' ? Icons.photo_library : Icons.menu_book,
-                                                        size: 40,
-                                                        color: Colors.grey,
-                                                      ),
-                                                      const SizedBox(height: 4),
-                                                      const Text(
-                                                        'Không tải được ảnh',
-                                                        style: TextStyle(fontSize: 10, color: Colors.grey),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
+                                                borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
                                               ),
                                             // ĐIỂM ĐÁNH GIÁ & CỜ NGÔN NGỮ
                                             Positioned(
