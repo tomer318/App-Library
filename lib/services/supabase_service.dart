@@ -117,12 +117,115 @@ class SupabaseService {
     }).eq('id', storyId);
   }
 
-  // 5. XÓA TRUYỆN
-  static Future<void> deleteStory(String storyId) async {
-    await client.from('stories').delete().eq('id', storyId);
+  // 5. CẬP NHẬT CHƯƠNG TRÊN SUPABASE
+  static Future<void> updateChapter({
+    required String storyId,
+    required int chapterIndex,
+    required String title,
+    String content = '',
+    List<String>? imageUrls,
+  }) async {
+    try {
+      await client
+          .from('chapters')
+          .update({
+            'title': title,
+            'content': content,
+            'image_urls': imageUrls ?? [],
+          })
+          .eq('story_id', storyId)
+          .eq('chapter_order', chapterIndex);
+
+      await client.from('stories').update({
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('id', storyId);
+    } catch (e) {
+      debugPrint('Lỗi updateChapter trên Supabase: $e');
+    }
   }
 
-  // 6. ĐĂNG KÝ TÀI KHOẢN MỚI
+  // 6. XÓA CHƯƠNG TRÊN SUPABASE VÀ DỌN DẸP STORAGE NẾU LÀ COMIC
+  static Future<void> deleteChapter({
+    required String storyId,
+    required int chapterIndex,
+    String storyTitle = '',
+    String chapterTitle = '',
+    bool isComic = false,
+  }) async {
+    try {
+      // 1. Dọn dẹp folder ảnh của chương trên bucket comic_pages nếu là truyện tranh
+      if (isComic && storyTitle.isNotEmpty && chapterTitle.isNotEmpty) {
+        final storyFolder = '${slugify(storyTitle)}_$storyId';
+        final chapFolder = 'chap_${chapterIndex + 1}_${slugify(chapterTitle)}';
+        final targetPath = '$storyFolder/$chapFolder';
+        await deleteStorageFolder('comic_pages', targetPath);
+      }
+
+      // 2. Xóa bản ghi chương trong database
+      await client
+          .from('chapters')
+          .delete()
+          .eq('story_id', storyId)
+          .eq('chapter_order', chapterIndex);
+
+      // 3. Cập nhật thời gian sửa đổi của truyện
+      await client.from('stories').update({
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('id', storyId);
+    } catch (e) {
+      debugPrint('Lỗi deleteChapter trên Supabase: $e');
+    }
+  }
+
+  // 7. XÓA TOÀN BỘ FILE TRONG THƯ MỤC STORAGE (ĐỆ QUY)
+  static Future<void> deleteStorageFolder(String bucketName, String folderPath) async {
+    try {
+      final List<FileObject> objects = await client.storage.from(bucketName).list(path: folderPath);
+      for (final item in objects) {
+        final fullPath = '$folderPath/${item.name}';
+        // Nếu là thư mục con (ví dụ folder chap bên trong comic_pages)
+        if (item.id == null) {
+          await deleteStorageFolder(bucketName, fullPath);
+        } else {
+          await client.storage.from(bucketName).remove([fullPath]);
+        }
+      }
+      // Xóa các file ở cấp hiện tại
+      final filePaths = objects.where((e) => e.id != null).map((e) => '$folderPath/${e.name}').toList();
+      if (filePaths.isNotEmpty) {
+        await client.storage.from(bucketName).remove(filePaths);
+      }
+    } catch (e) {
+      debugPrint('Lỗi dọn dẹp folder $folderPath trên bucket $bucketName: $e');
+    }
+  }
+
+  // XÓA TRUYỆN TRÊN DATABASE KÈM DỌN DẸP SẠCH TOÀN BỘ STORAGE
+  static Future<void> deleteStory(String storyId, {String storyTitle = ''}) async {
+    try {
+      // 1. Dọn dẹp thư mục trên Storage nếu có tên truyện
+      if (storyTitle.isNotEmpty) {
+        final folderName = '${slugify(storyTitle)}_$storyId';
+        // Dọn dẹp trên bucket covers
+        await deleteStorageFolder('covers', folderName);
+        // Dọn dẹp trên bucket comic_pages
+        await deleteStorageFolder('comic_pages', folderName);
+      }
+
+      // 2. Xóa bình luận liên quan đến truyện
+      await client.from('comments').delete().eq('story_id', storyId);
+
+      // 3. Xóa các chương trong bảng chapters
+      await client.from('chapters').delete().eq('story_id', storyId);
+
+      // 4. Xóa truyện trong bảng stories
+      await client.from('stories').delete().eq('id', storyId);
+    } catch (e) {
+      debugPrint('Lỗi khi xóa truyện $storyId: $e');
+    }
+  }
+
+  // 8. ĐĂNG KÝ TÀI KHOẢN MỚI
   static Future<void> registerUser(AppUser user) async {
     await client.from('profiles').insert({
       'id': user.id,
@@ -133,7 +236,7 @@ class SupabaseService {
     });
   }
 
-  // 7. LƯU TIẾN ĐỘ ĐỌC (UPSERT)
+  // 9. LƯU TIẾN ĐỘ ĐỌC (UPSERT)
   static Future<void> saveHistory(String userId, String storyId, int chapterIndex) async {
     try {
       await client.from('reading_history').upsert({
@@ -143,8 +246,6 @@ class SupabaseService {
         'last_read_at': DateTime.now().toIso8601String(),
       });
 
-      // Tăng lượt xem (Cần tạo RPC `increment_view_count` trong SQL sau nếu muốn tối ưu, 
-      // tạm thời bỏ qua hoặc dùng hàm update trực tiếp như dưới đây)
       final s = await client.from('stories').select('view_count').eq('id', storyId).single();
       final currentViews = (s['view_count'] as int? ?? 0) + 1;
       await client.from('stories').update({'view_count': currentViews}).eq('id', storyId);
@@ -153,7 +254,7 @@ class SupabaseService {
     }
   }
 
-  // 8. BẬT/TẮT YÊU THÍCH (BOOKMARK)
+  // 10. BẬT/TẮT YÊU THÍCH (BOOKMARK)
   static Future<void> toggleFavorite(String userId, String storyId, bool isFavorite) async {
     try {
       if (isFavorite) {
@@ -166,8 +267,39 @@ class SupabaseService {
     }
   }
 
-  // 9. TẢI ẢNH BÌA LÊN SUPABASE STORAGE
-  static Future<String?> uploadCoverImage(Uint8List bytes, String fileExtension) async {
+  // 11. HÀM TẠO SLUG CHUẨN: BỎ DẤU TIẾNG VIỆT VÀ KÝ TỰ ĐẶC BIỆT
+  static String slugify(String text) {
+    var str = text.toLowerCase().trim();
+    const vietnamese = [
+      'a', 'á', 'à', 'ả', 'ã', 'ạ', 'ă', 'ắ', 'ằ', 'ẳ', 'ẵ', 'ặ', 'â', 'ấ', 'ầ', 'ẩ', 'ẫ', 'ậ',
+      'd', 'đ',
+      'e', 'é', 'è', 'ẻ', 'ẽ', 'ẹ', 'ê', 'ế', 'ề', 'ể', 'ễ', 'ệ',
+      'i', 'í', 'ì', 'ỉ', 'ĩ', 'ị',
+      'o', 'ó', 'ò', 'ỏ', 'õ', 'ọ', 'ô', 'ố', 'ồ', 'ổ', 'ỗ', 'ộ', 'ơ', 'ớ', 'ờ', 'ở', 'ỡ', 'ợ',
+      'u', 'ú', 'ù', 'ủ', 'ũ', 'ụ', 'ư', 'ứ', 'ừ', 'ử', 'ữ', 'ự',
+      'y', 'ý', 'ỳ', 'ỷ', 'ỹ', 'ỵ'
+    ];
+    const english = [
+      'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a',
+      'd', 'd',
+      'e', 'e', 'e', 'e', 'e', 'e', 'e', 'e', 'e', 'e', 'e', 'e',
+      'i', 'i', 'i', 'i', 'i', 'i',
+      'o', 'o', 'o', 'o', 'o', 'o', 'o', 'o', 'o', 'o', 'o', 'o', 'o', 'o', 'o', 'o', 'o', 'o',
+      'u', 'u', 'u', 'u', 'u', 'u', 'u', 'u', 'u', 'u', 'u', 'u',
+      'y', 'y', 'y', 'y', 'y', 'y'
+    ];
+
+    for (int i = 0; i < vietnamese.length; i++) {
+      str = str.replaceAll(vietnamese[i], english[i]);
+    }
+    str = str.replaceAll(RegExp(r'[^a-z0-9]+'), '_').replaceAll(RegExp(r'_+'), '_');
+    if (str.startsWith('_')) str = str.substring(1);
+    if (str.endsWith('_')) str = str.substring(0, str.length - 1);
+    return str.isEmpty ? 'story' : str;
+  }
+
+  // 12. TẢI ẢNH BÌA LÊN SUPABASE STORAGE
+  static Future<String?> uploadCoverImage(Uint8List bytes, String fileExtension, {String storyTitle = '', String storyId = ''}) async {
     try {
       final cleanExt = fileExtension.replaceAll('.', '').toLowerCase();
       String mimeType = 'image/jpeg';
@@ -179,11 +311,13 @@ class SupabaseService {
         mimeType = 'image/gif';
       }
 
-      // Đặt tên file trực tiếp ở root bucket, KHÔNG thêm tiền tố 'public/'
       final fileName = 'cover_${DateTime.now().millisecondsSinceEpoch}.$cleanExt';
+      final path = (storyTitle.isNotEmpty && storyId.isNotEmpty)
+          ? '${slugify(storyTitle)}_$storyId/$fileName'
+          : fileName;
 
       await client.storage.from('covers').uploadBinary(
-        fileName,
+        path,
         bytes,
         fileOptions: FileOptions(
           upsert: true,
@@ -191,18 +325,50 @@ class SupabaseService {
         ),
       );
 
-      // Lấy URL công khai chính xác
-      final publicUrl = client.storage.from('covers').getPublicUrl(fileName);
-      return publicUrl;
+      return client.storage.from('covers').getPublicUrl(path);
+    } catch (e, stack) {
+      debugPrint('LỖI CHI TIẾT UPLOAD BÌA: $e');
+      debugPrint('STACK TRACE: $stack');
+      return null;
+    }
+  }
+
+  // 13. TẢI ẢNH TRANG TRUYỆN (COMIC PAGES) VỚI FOLDER PHÂN CẤP
+  static Future<String?> uploadChapterImage({
+    required String storyId,
+    required String storyTitle,
+    required int chapterOrder,
+    required String chapterTitle,
+    required Uint8List bytes,
+    required String fileName,
+  }) async {
+    try {
+      final ext = fileName.split('.').last.toLowerCase();
+      final safeFileName = '${DateTime.now().microsecondsSinceEpoch}_${bytes.length}.$ext';
+      
+      final storyFolder = '${slugify(storyTitle)}_$storyId';
+      final chapFolder = 'chap_${chapterOrder + 1}_${slugify(chapterTitle)}';
+      final path = '$storyFolder/$chapFolder/$safeFileName';
+
+      await client.storage.from('comic_pages').uploadBinary(
+        path,
+        bytes,
+        fileOptions: FileOptions(
+          contentType: ext == 'png' ? 'image/png' : (ext == 'webp' ? 'image/webp' : 'image/jpeg'),
+          upsert: true,
+        ),
+      );
+
+      return client.storage.from('comic_pages').getPublicUrl(path);
     } catch (e) {
-      debugPrint('Lỗi uploadCoverImage: $e');
+      debugPrint('Lỗi uploadChapterImage: $e');
       return null;
     }
   }
 
   // --- SUPABASE AUTHENTICATION ---
 
-  // 10. ĐĂNG KÝ TÀI KHOẢN QUA SUPABASE AUTH
+  // 14. ĐĂNG KÝ TÀI KHOẢN QUA SUPABASE AUTH
   static Future<AuthResponse> signUp({
     required String email,
     required String password,
@@ -219,7 +385,7 @@ class SupabaseService {
     );
   }
 
-  // 11. ĐĂNG NHẬP BẰNG SUPABASE AUTH
+  // 15. ĐĂNG NHẬP BẰNG SUPABASE AUTH
   static Future<AuthResponse> signIn({
     required String email,
     required String password,
@@ -230,12 +396,12 @@ class SupabaseService {
     );
   }
 
-  // 12. ĐĂNG XUẤT KHỎI SUPABASE AUTH
+  // 16. ĐĂNG XUẤT KHỎI SUPABASE AUTH
   static Future<void> signOut() async {
     await client.auth.signOut();
   }
 
-  // 13. LẤY THÔNG TIN USER HIỆN TẠI TỪ SESSION VÀ BẢNG PROFILES
+  // 17. LẤY THÔNG TIN USER HIỆN TẠI TỪ SESSION VÀ BẢNG PROFILES
   static Future<AppUser?> getCurrentProfile() async {
     final user = client.auth.currentUser;
     if (user == null) return null;
@@ -251,7 +417,7 @@ class SupabaseService {
         return AppUser(
           id: res['id'],
           username: res['username'] ?? (user.email?.split('@').first ?? 'User'),
-          password: '', // Không lưu mật khẩu thô ở Client
+          password: '',
           role: res['role'] ?? 'reader',
           bio: res['bio'] ?? '',
         );
@@ -264,7 +430,6 @@ class SupabaseService {
 
   // --- PROFILE & ROLE SYNC ---
 
-  // Cập nhật thông tin Display Name & Bio lên bảng profiles
   static Future<void> updateProfile({
     required String userId,
     required String username,
@@ -280,7 +445,6 @@ class SupabaseService {
     }
   }
 
-  // Cập nhật vai trò (Role) lên bảng profiles
   static Future<void> updateUserRole({
     required String userId,
     required String role,
@@ -296,7 +460,6 @@ class SupabaseService {
 
   // --- COMMENTS SYNC ---
 
-  // Tải danh sách tất cả bình luận từ Supabase Cloud
   static Future<List<Comment>> fetchComments() async {
     try {
       final res = await client
@@ -322,7 +485,6 @@ class SupabaseService {
     }
   }
 
-  // Thêm bình luận mới lên Cloud
   static Future<void> insertComment(Comment comment, String? userId) async {
     try {
       await client.from('comments').insert({
@@ -341,7 +503,6 @@ class SupabaseService {
     }
   }
 
-  // Cập nhật lượt thích và lượt báo cáo của bình luận
   static Future<void> updateCommentInteraction(String commentId, List<String> likedUsernames, int reportCount) async {
     try {
       await client.from('comments').update({
@@ -353,7 +514,6 @@ class SupabaseService {
     }
   }
 
-  // Xóa bình luận
   static Future<void> deleteComment(String commentId) async {
     try {
       await client.from('comments').delete().eq('id', commentId);
@@ -362,7 +522,6 @@ class SupabaseService {
     }
   }
 
-  // Lưu hoặc cập nhật đánh giá của user cho 1 truyện
   static Future<void> submitRating({
     required String storyId,
     required String userId,
@@ -382,7 +541,6 @@ class SupabaseService {
     }
   }
 
-  // Lấy tất cả rating của các truyện để tính điểm trung bình
   static Future<Map<String, List<int>>> fetchAllRatings() async {
     try {
       final res = await client.from('ratings').select('story_id, rating');
@@ -396,76 +554,6 @@ class SupabaseService {
     } catch (e) {
       debugPrint('Lỗi fetchAllRatings: $e');
       return {};
-    }
-  }
-
-  // Tải ảnh trang truyện lên Supabase Storage Bucket 'comic_pages'
-  static Future<String?> uploadChapterImage({
-    required String storyId,
-    required Uint8List bytes,
-    required String fileName,
-    }) async {
-    try {
-      final ext = fileName.split('.').last.toLowerCase();
-      // Dùng microseconds và độ dài bytes để tạo tên file ngẫu nhiên an toàn, không chứa ký tự đặc biệt
-      final safeFileName = '${DateTime.now().microsecondsSinceEpoch}_${bytes.length}.$ext';
-      final path = '$storyId/$safeFileName';
-
-      // Upload file dạng binary bytes
-      await client.storage.from('comic_pages').uploadBinary(
-        path,
-        bytes,
-        fileOptions: FileOptions(
-          contentType: ext == 'png' ? 'image/png' : (ext == 'webp' ? 'image/webp' : 'image/jpeg'),
-          upsert: true,
-        ),
-      );
-
-      // Lấy URL công khai của ảnh
-      final publicUrl = client.storage.from('comic_pages').getPublicUrl(path);
-      return publicUrl;
-    } catch (e) {
-      debugPrint('Lỗi uploadChapterImage: $e');
-      return null;
-    }
-  }
-
-  // Cập nhật nội dung / danh sách ảnh của một chapter lên Supabase Database
-  static Future<void> updateChapter({
-    required String storyId,
-    required int chapterIndex,
-    required String title,
-    String content = '',
-    List<String>? imageUrls,
-  }) async {
-    try {
-      await client
-          .from('chapters')
-          .update({
-            'title': title,
-            'content': content,
-            'image_urls': imageUrls ?? [],
-          })
-          .eq('story_id', storyId)
-          .eq('chapter_order', chapterIndex);
-    } catch (e) {
-      debugPrint('Lỗi updateChapter trên Supabase: $e');
-    }
-  }
-
-  // Xóa chapter trên Supabase Database
-  static Future<void> deleteChapter({
-    required String storyId,
-    required int chapterIndex,
-  }) async {
-    try {
-      await client
-          .from('chapters')
-          .delete()
-          .eq('story_id', storyId)
-          .eq('chapter_order', chapterIndex);
-    } catch (e) {
-      debugPrint('Lỗi deleteChapter trên Supabase: $e');
     }
   }
 }

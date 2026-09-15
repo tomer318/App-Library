@@ -59,45 +59,48 @@ class ExploreScreen extends StatelessWidget {
                     ],
                   ),
 
-                  // 2. KHỐI BỘ LỌC CÓ THỂ THU GỌN / MỞ RỘNG (COLLAPSIBLE)
-                  if (state.isFilterBarVisible) ...[
-                    const SizedBox(height: 8),
-                    // Phân loại Novel / Manga
-                    SizedBox(
-                      width: double.infinity,
-                      child: SegmentedButton<String>(
-                        style: const ButtonStyle(
-                          visualDensity: VisualDensity.compact,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  // 2. THANH LỌC NHANH TRỰC QUAN (LUÔN HIỂN THỊ)
+                  const SizedBox(height: 8),
+                  // Hàng chọn Novel / Manga kèm Ngôn ngữ hiển thị
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    alignment: WrapAlignment.spaceBetween,
+                    children: [
+                      // Phân loại Novel / Manga
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 380),
+                        child: SegmentedButton<String>(
+                          style: const ButtonStyle(
+                            visualDensity: VisualDensity.compact,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          segments: [
+                            ButtonSegment(
+                              value: 'all',
+                              label: Text(state.t('all'), maxLines: 1, style: const TextStyle(fontSize: 12)),
+                              icon: const Icon(Icons.apps, size: 14),
+                            ),
+                            ButtonSegment(
+                              value: 'novel',
+                              label: Text(state.t('novel'), maxLines: 1, style: const TextStyle(fontSize: 12)),
+                              icon: const Icon(Icons.menu_book, size: 14),
+                            ),
+                            ButtonSegment(
+                              value: 'comic',
+                              label: Text(state.t('manga'), maxLines: 1, style: const TextStyle(fontSize: 12)),
+                              icon: const Icon(Icons.photo_library, size: 14),
+                            ),
+                          ],
+                          selected: {state.selectedType},
+                          onSelectionChanged: (val) => state.setSelectedType(val.first),
                         ),
-                        segments: [
-                          ButtonSegment(
-                            value: 'all',
-                            label: Text(state.t('all'), maxLines: 1, style: const TextStyle(fontSize: 12)),
-                            icon: const Icon(Icons.apps, size: 14),
-                          ),
-                          ButtonSegment(
-                            value: 'novel',
-                            label: Text(state.t('novel'), maxLines: 1, style: const TextStyle(fontSize: 12)),
-                            icon: const Icon(Icons.menu_book, size: 14),
-                          ),
-                          ButtonSegment(
-                            value: 'comic',
-                            label: Text(state.t('manga'), maxLines: 1, style: const TextStyle(fontSize: 12)),
-                            icon: const Icon(Icons.photo_library, size: 14),
-                          ),
-                        ],
-                        selected: {state.selectedType},
-                        onSelectionChanged: (val) => state.setSelectedType(val.first),
                       ),
-                    ),
-                    const SizedBox(height: 6),
 
-                    // Lọc theo ngôn ngữ (Tất cả / Tiếng Việt / Tiếng Anh)
-                    SizedBox(
-                      height: 32,
-                      child: ListView(
-                        scrollDirection: Axis.horizontal,
+                      // Lọc theo cờ ngôn ngữ (Tất cả / Tiếng Việt / Tiếng Anh)
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
                           FilterChip(
                             label: Text(state.t('filter_all_lang'), style: const TextStyle(fontSize: 11)),
@@ -123,10 +126,12 @@ class ExploreScreen extends StatelessWidget {
                           ),
                         ],
                       ),
-                    ),
-                    const SizedBox(height: 6),
+                    ],
+                  ),
 
-                    // Thanh lọc đa Tag (Master Tags)
+                  // Thanh lọc Tag theo danh mục (Bật/Tắt qua nút Phễu)
+                  if (state.isFilterBarVisible) ...[
+                    const SizedBox(height: 8),
                     SizedBox(
                       height: 34,
                       child: ListView(
@@ -158,7 +163,7 @@ class ExploreScreen extends StatelessWidget {
 
                   const SizedBox(height: 10),
 
-                  // 3. DANH SÁCH THẺ TRUYỆN (GRIDVIEW RESPONSIVE)
+                  // 3. DANH SÁCH THẺ TRUYỆN (GRIDVIEW RESPONSIVE & KHÔNG BỊ LỆCH THANH CUỘN)
                   Expanded(
                     child: stories.isEmpty
                         ? Center(
@@ -167,167 +172,180 @@ class ExploreScreen extends StatelessWidget {
                               children: [
                                 const Icon(Icons.search_off, size: 60, color: Colors.grey),
                                 const SizedBox(height: 12),
-                                const Text('Không tìm thấy truyện phù hợp.', style: TextStyle(color: Colors.grey)),
+                                Text(state.t('no_stories_found'), style: const TextStyle(color: Colors.grey)),
                                 const SizedBox(height: 8),
                                 OutlinedButton(
                                   onPressed: state.resetFilters,
-                                  child: const Text('Đặt lại bộ lọc'),
+                                  child: Text(state.t('reset_filters')),
                                 ),
                               ],
                             ),
                           )
-                        : GridView.builder(
-                            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                              maxCrossAxisExtent: 260,
-                              childAspectRatio: 0.50,
-                              crossAxisSpacing: 12,
-                              mainAxisSpacing: 12,
+                        : ScrollConfiguration(
+                            behavior: ScrollConfiguration.of(context).copyWith(
+                              scrollbars: false, // Tắt thanh cuộn cứng của trình duyệt gây thụt lề
                             ),
-                            itemCount: stories.length,
-                            itemBuilder: (ctx, idx) {
-                              final story = stories[idx];
-                              final isFav = state.isFavorite(story.id);
+                            child: LayoutBuilder(
+                              builder: (context, constraints) {
+                                final isMobile = constraints.maxWidth < 600;
 
-                              return Card(
-                                clipBehavior: Clip.antiAlias,
-                                child: InkWell(
-                                  onTap: () => Navigator.push(
-                                    context,
-                                    MaterialPageRoute(builder: (_) => StoryDetailScreen(story: story)),
+                                return GridView.builder(
+                                  padding: EdgeInsets.only(
+                                    top: 4,
+                                    bottom: isMobile ? 16 : 24,
                                   ),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Expanded(
-                                        child: Stack(
-                                          fit: StackFit.expand,
+                                  physics: const BouncingScrollPhysics(),
+                                  gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                                    maxCrossAxisExtent: isMobile ? 210 : 250,
+                                    childAspectRatio: isMobile ? 0.54 : 0.52,
+                                    crossAxisSpacing: 12,
+                                    mainAxisSpacing: 12,
+                                  ),
+                                  itemCount: stories.length,
+                                  itemBuilder: (ctx, idx) {
+                                    final story = stories[idx];
+                                    final isFav = state.isFavorite(story.id);
+
+                                    return Card(
+                                      clipBehavior: Clip.antiAlias,
+                                      child: InkWell(
+                                        onTap: () => Navigator.push(
+                                          context,
+                                          MaterialPageRoute(builder: (_) => StoryDetailScreen(story: story)),
+                                        ),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
-                                            if (story.coverUrl.trim().isEmpty)
-                                              Container(
-                                                color: Colors.grey.shade900,
-                                                child: const Icon(Icons.menu_book, size: 40, color: Colors.grey),
-                                              )
-                                            else
-                                              SafeNetworkImage(
-                                                imageUrl: story.coverUrl,
-                                                fit: BoxFit.cover,
-                                                borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
-                                              ),
-                                            // ĐIỂM ĐÁNH GIÁ & CỜ NGÔN NGỮ
-                                            Positioned(
-                                              top: 8,
-                                              left: 8,
-                                              child: Row(
+                                            Expanded(
+                                              child: Stack(
+                                                fit: StackFit.expand,
                                                 children: [
-                                                  Container(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                    decoration: BoxDecoration(
-                                                      color: Colors.black.withValues(alpha: 0.7),
-                                                      borderRadius: BorderRadius.circular(4),
+                                                  if (story.coverUrl.trim().isEmpty)
+                                                    Container(
+                                                      color: Colors.grey.shade900,
+                                                      child: const Icon(Icons.menu_book, size: 40, color: Colors.grey),
+                                                    )
+                                                  else
+                                                    SafeNetworkImage(
+                                                      imageUrl: story.coverUrl,
+                                                      fit: BoxFit.cover,
+                                                      borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
                                                     ),
+                                                  Positioned(
+                                                    top: 8,
+                                                    left: 8,
                                                     child: Row(
                                                       children: [
-                                                        const Icon(Icons.star, color: Colors.amber, size: 14),
-                                                        const SizedBox(width: 2),
-                                                        Text(
-                                                          story.averageRating.toStringAsFixed(1),
-                                                          style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                                                        Container(
+                                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                          decoration: BoxDecoration(
+                                                            color: Colors.black.withValues(alpha: 0.7),
+                                                            borderRadius: BorderRadius.circular(4),
+                                                          ),
+                                                          child: Row(
+                                                            children: [
+                                                              const Icon(Icons.star, color: Colors.amber, size: 14),
+                                                              const SizedBox(width: 2),
+                                                              Text(
+                                                                story.averageRating.toStringAsFixed(1),
+                                                                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        ),
+                                                        const SizedBox(width: 4),
+                                                        Container(
+                                                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                                          decoration: BoxDecoration(
+                                                            color: Colors.black.withValues(alpha: 0.7),
+                                                            borderRadius: BorderRadius.circular(4),
+                                                          ),
+                                                          child: Text(
+                                                            story.language == 'en' ? '🇬🇧 EN' : '🇻🇳 VI',
+                                                            style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                                                          ),
                                                         ),
                                                       ],
                                                     ),
                                                   ),
-                                                  const SizedBox(width: 4),
-                                                  Container(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                                                    decoration: BoxDecoration(
-                                                      color: Colors.black.withValues(alpha: 0.7),
-                                                      borderRadius: BorderRadius.circular(4),
-                                                    ),
-                                                    child: Text(
-                                                      story.language == 'en' ? '🇬🇧 EN' : '🇻🇳 VI',
-                                                      style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                                                  Positioned(
+                                                    top: 4,
+                                                    right: 4,
+                                                    child: IconButton(
+                                                      icon: Icon(
+                                                        isFav ? Icons.favorite : Icons.favorite_border,
+                                                        color: isFav ? Colors.redAccent : Colors.white,
+                                                      ),
+                                                      onPressed: () => state.toggleFavorite(story.id),
                                                     ),
                                                   ),
                                                 ],
                                               ),
                                             ),
-                                            // NÚT BOOKMARK TỦ SÁCH
-                                            Positioned(
-                                              top: 4,
-                                              right: 4,
-                                              child: IconButton(
-                                                icon: Icon(
-                                                  isFav ? Icons.favorite : Icons.favorite_border,
-                                                  color: isFav ? Colors.redAccent : Colors.white,
-                                                ),
-                                                onPressed: () => state.toggleFavorite(story.id),
+                                            Padding(
+                                              padding: const EdgeInsets.all(8.0),
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    story.title,
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                                  ),
+                                                  const SizedBox(height: 2),
+                                                  Row(
+                                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                    children: [
+                                                      Expanded(
+                                                        child: Text(
+                                                          story.author,
+                                                          maxLines: 1,
+                                                          overflow: TextOverflow.ellipsis,
+                                                          style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                                        ),
+                                                      ),
+                                                      Text(
+                                                        '${story.releaseYear}',
+                                                        style: const TextStyle(fontSize: 10, color: Colors.grey),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  const SizedBox(height: 6),
+                                                  Wrap(
+                                                    spacing: 4,
+                                                    runSpacing: 4,
+                                                    children: story.tags.take(2).map((tag) {
+                                                      return InkWell(
+                                                        borderRadius: BorderRadius.circular(4),
+                                                        onTap: () => state.setSingleTagFilter(tag),
+                                                        child: Container(
+                                                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                                          decoration: BoxDecoration(
+                                                            color: Colors.deepPurpleAccent.withValues(alpha: 0.15),
+                                                            borderRadius: BorderRadius.circular(4),
+                                                          ),
+                                                          child: Text(
+                                                            state.tGenre(tag),
+                                                            style: const TextStyle(fontSize: 9, color: Colors.deepPurpleAccent, fontWeight: FontWeight.w600),
+                                                          ),
+                                                        ),
+                                                      );
+                                                    }).toList(),
+                                                  ),
+                                                  const SizedBox(height: 4),
+                                                  Text('${story.chapters.length} ${state.t('chaps_count_suffix')}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                                                ],
                                               ),
                                             ),
                                           ],
                                         ),
                                       ),
-                                      Padding(
-                                        padding: const EdgeInsets.all(10.0),
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              story.title,
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                                            ),
-                                            const SizedBox(height: 2),
-                                            Row(
-                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                              children: [
-                                                Expanded(
-                                                  child: Text(
-                                                    story.author,
-                                                    maxLines: 1,
-                                                    overflow: TextOverflow.ellipsis,
-                                                    style: const TextStyle(fontSize: 11, color: Colors.grey),
-                                                  ),
-                                                ),
-                                                Text(
-                                                  '${story.releaseYear}',
-                                                  style: const TextStyle(fontSize: 10, color: Colors.grey),
-                                                ),
-                                              ],
-                                            ),
-                                            const SizedBox(height: 6),
-                                            // HIỂN THỊ CÁC TAG - BẤM VÀO TAG ĐỂ LỌC
-                                            Wrap(
-                                              spacing: 4,
-                                              runSpacing: 4,
-                                              children: story.tags.take(3).map((tag) {
-                                                return InkWell(
-                                                  borderRadius: BorderRadius.circular(4),
-                                                  onTap: () => state.setSingleTagFilter(tag),
-                                                  child: Container(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                                                    decoration: BoxDecoration(
-                                                      color: Colors.deepPurpleAccent.withValues(alpha: 0.15),
-                                                      borderRadius: BorderRadius.circular(4),
-                                                    ),
-                                                    child: Text(
-                                                      state.tGenre(tag),
-                                                      style: const TextStyle(fontSize: 9, color: Colors.deepPurpleAccent, fontWeight: FontWeight.w600),
-                                                    ),
-                                                  ),
-                                                );
-                                              }).toList(),
-                                            ),
-                                            const SizedBox(height: 4),
-                                            Text('${story.chapters.length} chap', style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              );
-                            },
+                                    );
+                                  },
+                                );
+                              },
+                            ),
                           ),
                   ),
                 ],

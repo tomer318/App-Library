@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../models/models.dart';
@@ -6,6 +7,7 @@ import '../../widgets/comic_chapter_editor_dialog.dart';
 import '../../widgets/chapter_manager_dialog.dart';
 import '../../services/supabase_service.dart';
 import '../../widgets/safe_network_image.dart';
+import '../../utils/novel_parser.dart';
 
 class AdminDashboardScreen extends StatelessWidget {
   const AdminDashboardScreen({super.key});
@@ -78,6 +80,8 @@ class AdminDashboardScreen extends StatelessWidget {
                                     itemBuilder: (context, index) {
                                       final story = state.stories[index];
                                       final mainTag = story.tags.isNotEmpty ? story.tags.first : 'Khác';
+                                      final isHidden = story.status == 'Tạm ẩn' || story.status == 'hidden';
+                                      final isCompleted = story.status == 'Hoàn thành';
 
                                       return ListTile(
                                         leading: SafeNetworkImage(
@@ -87,9 +91,65 @@ class AdminDashboardScreen extends StatelessWidget {
                                           fit: BoxFit.cover,
                                           borderRadius: BorderRadius.circular(4),
                                         ),
-                                        title: Text(story.title, style: const TextStyle(fontWeight: FontWeight.bold)),
+                                        title: Row(
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                story.title,
+                                                style: const TextStyle(fontWeight: FontWeight.bold),
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 6),
+                                            Chip(
+                                              label: Text(story.type == 'comic' ? state.t('manga') : state.t('novel'), style: const TextStyle(fontSize: 10)),
+                                              visualDensity: VisualDensity.compact,
+                                            ),
+                                            const SizedBox(width: 4),
+                                            // BADGE TRẠNG THÁI KIỂM DUYỆT
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: isHidden
+                                                    ? Colors.redAccent.withValues(alpha: 0.2)
+                                                    : (isCompleted ? Colors.green.withValues(alpha: 0.2) : Colors.blue.withValues(alpha: 0.2)),
+                                                borderRadius: BorderRadius.circular(4),
+                                                border: Border.all(
+                                                  color: isHidden
+                                                      ? Colors.redAccent
+                                                      : (isCompleted ? Colors.green : Colors.blueAccent),
+                                                  width: 0.8,
+                                                ),
+                                              ),
+                                              child: Text(
+                                                isHidden
+                                                    ? '🔒 Tạm ẩn'
+                                                    : (isCompleted ? '✅ Hoàn thành' : '⚡ Đang ra'),
+                                                style: TextStyle(
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: isHidden
+                                                      ? Colors.redAccent
+                                                      : (isCompleted ? Colors.greenAccent : Colors.lightBlueAccent),
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 4),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: Colors.black45,
+                                                borderRadius: BorderRadius.circular(4),
+                                              ),
+                                              child: Text(
+                                                story.language == 'en' ? '🇬🇧 EN' : '🇻🇳 VI',
+                                                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                         subtitle: Text('${story.author} • ${state.tGenre(mainTag)} • ${story.chapters.length} chap • 👁️ ${story.viewCount}'),
-                                        trailing: MediaQuery.of(context).size.width < 600
+                                        trailing: MediaQuery.of(context).size.width < 650
                                             ? PopupMenuButton<String>(
                                                 icon: const Icon(Icons.more_vert),
                                                 onSelected: (val) {
@@ -102,6 +162,12 @@ class AdminDashboardScreen extends StatelessWidget {
                                                     _showAddChapterDialog(context, story);
                                                   } else if (val == 'edit') {
                                                     _showAddOrEditStoryModal(context, existingStory: story);
+                                                  } else if (val == 'status_ongoing') {
+                                                    state.updateStoryStatus(story.id, 'Đang tiến hành');
+                                                  } else if (val == 'status_completed') {
+                                                    state.updateStoryStatus(story.id, 'Hoàn thành');
+                                                  } else if (val == 'status_hidden') {
+                                                    state.updateStoryStatus(story.id, 'Tạm ẩn');
                                                   } else if (val == 'delete') {
                                                     state.removeStory(story.id);
                                                   }
@@ -119,6 +185,20 @@ class AdminDashboardScreen extends StatelessWidget {
                                                     value: 'edit',
                                                     child: Row(children: [const Icon(Icons.edit, color: Colors.amber, size: 20), const SizedBox(width: 8), Text(state.t('edit_story'))]),
                                                   ),
+                                                  const PopupMenuDivider(),
+                                                  const PopupMenuItem(
+                                                    value: 'status_ongoing',
+                                                    child: Row(children: [Icon(Icons.bolt, color: Colors.blueAccent, size: 20), SizedBox(width: 8), Text('Đặt: Đang tiến hành')]),
+                                                  ),
+                                                  const PopupMenuItem(
+                                                    value: 'status_completed',
+                                                    child: Row(children: [Icon(Icons.check_circle_outline, color: Colors.greenAccent, size: 20), SizedBox(width: 8), Text('Đặt: Đã hoàn thành')]),
+                                                  ),
+                                                  const PopupMenuItem(
+                                                    value: 'status_hidden',
+                                                    child: Row(children: [Icon(Icons.visibility_off_outlined, color: Colors.redAccent, size: 20), SizedBox(width: 8), Text('Đặt: Tạm ẩn truyện')]),
+                                                  ),
+                                                  const PopupMenuDivider(),
                                                   PopupMenuItem(
                                                     value: 'delete',
                                                     child: Row(children: [const Icon(Icons.delete, color: Colors.redAccent, size: 20), const SizedBox(width: 8), Text(state.t('delete_story'))]),
@@ -128,6 +208,44 @@ class AdminDashboardScreen extends StatelessWidget {
                                             : Row(
                                                 mainAxisSize: MainAxisSize.min,
                                                 children: [
+                                                  // MENU KIỂM DUYỆT TRẠNG THÁI
+                                                  PopupMenuButton<String>(
+                                                    icon: const Icon(Icons.shield_outlined, color: Colors.purpleAccent),
+                                                    tooltip: 'Kiểm duyệt trạng thái',
+                                                    onSelected: (newStatus) => state.updateStoryStatus(story.id, newStatus),
+                                                    itemBuilder: (_) => [
+                                                      const PopupMenuItem(
+                                                        value: 'Đang tiến hành',
+                                                        child: Row(
+                                                          children: [
+                                                            Icon(Icons.bolt, color: Colors.blueAccent, size: 18),
+                                                            SizedBox(width: 8),
+                                                            Text('Công khai (Đang tiến hành)'),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                      const PopupMenuItem(
+                                                        value: 'Hoàn thành',
+                                                        child: Row(
+                                                          children: [
+                                                            Icon(Icons.check_circle_outline, color: Colors.greenAccent, size: 18),
+                                                            SizedBox(width: 8),
+                                                            Text('Công khai (Đã hoàn thành)'),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                      const PopupMenuItem(
+                                                        value: 'Tạm ẩn',
+                                                        child: Row(
+                                                          children: [
+                                                            Icon(Icons.visibility_off_outlined, color: Colors.redAccent, size: 18),
+                                                            SizedBox(width: 8),
+                                                            Text('Tạm ẩn (Khóa hiển thị)'),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
                                                   IconButton(
                                                     icon: const Icon(Icons.format_list_bulleted, color: Colors.tealAccent),
                                                     tooltip: state.t('manage_chapters'),
@@ -249,6 +367,7 @@ class AdminDashboardScreen extends StatelessWidget {
   }
 
   void _showAddOrEditStoryModal(BuildContext context, {Story? existingStory}) {
+    final assignedStoryId = existingStory?.id ?? DateTime.now().millisecondsSinceEpoch.toString();
     final titleCtrl = TextEditingController(text: existingStory?.title ?? '');
     final authorCtrl = TextEditingController(text: existingStory?.author ?? '');
     final coverCtrl = TextEditingController(text: existingStory?.coverUrl ?? '');
@@ -256,8 +375,8 @@ class AdminDashboardScreen extends StatelessWidget {
     final yearCtrl = TextEditingController(text: (existingStory?.releaseYear ?? 2024).toString());
 
     List<String> selectedTags = List<String>.from(existingStory?.tags ?? ['Tâm linh']);
-    // Cho phép chọn và giữ trạng thái type giữa 'novel' và 'comic'
     String storyType = existingStory?.type ?? 'novel';
+    String storyLang = existingStory?.language ?? 'vi';
     bool isUploading = false;
 
     showDialog(
@@ -265,7 +384,7 @@ class AdminDashboardScreen extends StatelessWidget {
       builder: (ctx) => StatefulBuilder(
         builder: (dialogCtx, setModalState) {
           return AlertDialog(
-            backgroundColor: const Color(0xFF1E1E1E),
+            backgroundColor: const Color(0xFF1E1E26),
             title: Text(existingStory == null ? globalAppState.t('add_new_story') : globalAppState.t('edit_story')),
             content: SizedBox(
               width: 650,
@@ -273,7 +392,7 @@ class AdminDashboardScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // BỘ CHỌN LOẠI TRUYỆN: NOVEL (TRUYỆN CHỮ) HOẶC COMIC (TRUYỆN TRANH)
+                    // BỘ CHỌN LOẠI TRUYỆN: NOVEL HOẶC COMIC
                     const Text('Phân loại tác phẩm:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                     const SizedBox(height: 6),
                     SizedBox(
@@ -297,6 +416,22 @@ class AdminDashboardScreen extends StatelessWidget {
                             storyType = val.first;
                           });
                         },
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // BỘ CHỌN NGÔN NGỮ HIỂN THỊ CỜ
+                    const Text('Ngôn ngữ hiển thị của truyện:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    const SizedBox(height: 6),
+                    SizedBox(
+                      width: double.infinity,
+                      child: SegmentedButton<String>(
+                        segments: const [
+                          ButtonSegment(value: 'vi', label: Text('🇻🇳 Tiếng Việt (VI)')),
+                          ButtonSegment(value: 'en', label: Text('🇬🇧 English (EN)')),
+                        ],
+                        selected: {storyLang},
+                        onSelectionChanged: (val) => setModalState(() => storyLang = val.first),
                       ),
                     ),
                     const SizedBox(height: 14),
@@ -329,40 +464,57 @@ class AdminDashboardScreen extends StatelessWidget {
                         const SizedBox(width: 8),
                         ElevatedButton.icon(
                           icon: isUploading
-                              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                )
                               : const Icon(Icons.file_upload),
                           label: Text(isUploading ? 'Đang tải...' : 'Browse'),
                           onPressed: isUploading
                               ? null
                               : () async {
+                                  final messenger = ScaffoldMessenger.of(context);
                                   final picker = ImagePicker();
                                   final file = await picker.pickImage(source: ImageSource.gallery);
-                                  if (file != null) {
+                                  if (file == null) return;
+
+                                  if (dialogCtx.mounted) {
                                     setModalState(() {
                                       isUploading = true;
                                       coverCtrl.text = 'Đang tải ảnh lên Cloud...';
                                     });
-
-                                    final bytes = await file.readAsBytes();
-                                    final ext = file.name.split('.').last.toLowerCase();
-
-                                    final uploadedUrl = await SupabaseService.uploadCoverImage(bytes, ext);
-
-                                    setModalState(() {
-                                      isUploading = false;
-                                      if (uploadedUrl != null) {
-                                        coverCtrl.text = uploadedUrl;
-                                      } else {
-                                        coverCtrl.text = '';
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(
-                                            content: Text('Lỗi tải ảnh lên Supabase! Vui lòng kiểm tra policy của bucket covers.'),
-                                            backgroundColor: Colors.redAccent,
-                                          ),
-                                        );
-                                      }
-                                    });
                                   }
+
+                                  final bytes = await file.readAsBytes();
+                                  final ext = file.name.split('.').last.toLowerCase();
+
+                                  final rawTitle = titleCtrl.text.trim();
+                                  final curTitle = rawTitle.isNotEmpty ? rawTitle : 'new_story';
+                                  final storyId = assignedStoryId;
+
+                                  final uploadedUrl = await SupabaseService.uploadCoverImage(
+                                    bytes,
+                                    ext,
+                                    storyTitle: curTitle,
+                                    storyId: storyId,
+                                  );
+
+                                  if (!dialogCtx.mounted) return;
+                                  setModalState(() {
+                                    isUploading = false;
+                                    if (uploadedUrl != null) {
+                                      coverCtrl.text = uploadedUrl;
+                                    } else {
+                                      coverCtrl.text = '';
+                                      messenger.showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Lỗi tải ảnh lên Supabase! Vui lòng kiểm tra policy của bucket covers.'),
+                                          backgroundColor: Colors.redAccent,
+                                        ),
+                                      );
+                                    }
+                                  });
                                 },
                         ),
                       ],
@@ -394,7 +546,17 @@ class AdminDashboardScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 12),
 
-                    TextField(controller: descCtrl, maxLines: 3, decoration: InputDecoration(labelText: globalAppState.t('description'), border: const OutlineInputBorder())),
+                    // MÔ TẢ GIỚI HẠN 750 KÝ TỰ
+                    TextField(
+                      controller: descCtrl,
+                      maxLines: 4,
+                      maxLength: 750,
+                      decoration: InputDecoration(
+                        labelText: globalAppState.t('description'),
+                        hintText: 'Nhập tóm tắt truyện (tối đa 750 ký tự)...',
+                        border: const OutlineInputBorder(),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -407,37 +569,40 @@ class AdminDashboardScreen extends StatelessWidget {
                     : () {
                         if (titleCtrl.text.isNotEmpty && authorCtrl.text.isNotEmpty) {
                           final year = int.tryParse(yearCtrl.text.trim()) ?? 2024;
+                          final cover = coverCtrl.text.trim().isEmpty ? 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=400&q=80' : coverCtrl.text.trim();
+                          final desc = descCtrl.text.trim();
+                          final tags = selectedTags.isEmpty ? ['Khác'] : selectedTags;
+
                           if (existingStory == null) {
                             globalAppState.addStory(
                               Story(
-                                id: DateTime.now().millisecondsSinceEpoch.toString(),
+                                id: assignedStoryId,
                                 title: titleCtrl.text.trim(),
                                 author: authorCtrl.text.trim(),
-                                tags: selectedTags.isEmpty ? ['Khác'] : selectedTags,
+                                tags: tags,
                                 releaseYear: year,
-                                type: storyType, // Lưu đúng type được chọn ('novel' hoặc 'comic')
-                                coverUrl: coverCtrl.text.trim().isEmpty ? 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=400&q=80' : coverCtrl.text.trim(),
-                                description: descCtrl.text.trim(),
-                                chapters: [
-                                  Chapter(
-                                    title: 'Chương 1: Mở đầu',
-                                    content: storyType == 'novel' ? 'Nội dung đang cập nhật...' : '',
-                                    imageUrls: storyType == 'comic' ? [] : [],
-                                  ),
-                                ],
+                                type: storyType,
+                                language: storyLang,
+                                coverUrl: cover,
+                                description: desc,
+                                creatorId: globalAppState.currentUser?.id ?? 'u_admin',
+                                chapters: [],
                               ),
                             );
                           } else {
-                            existingStory.type = storyType; // Đồng bộ type khi sửa
+                            existingStory.type = storyType;
+                            existingStory.language = storyLang;
                             globalAppState.updateStory(
                               existingStory.id,
                               titleCtrl.text.trim(),
                               authorCtrl.text.trim(),
-                              selectedTags.isEmpty ? ['Khác'] : selectedTags,
+                              tags,
                               year,
                               existingStory.status,
-                              coverCtrl.text.trim(),
-                              descCtrl.text.trim(),
+                              cover,
+                              desc,
+                              type: storyType,
+                              language: storyLang,
                             );
                           }
                           Navigator.pop(ctx);
@@ -452,6 +617,7 @@ class AdminDashboardScreen extends StatelessWidget {
     );
   }
 
+  // TRÌNH BIÊN TẬP VÀ NHẬP CHƯƠNG TỰ ĐỘNG CHUẨN STUDIO CHO ADMIN
   void _showAddChapterDialog(BuildContext context, Story story) {
     if (story.type == 'comic') {
       showDialog(
@@ -464,38 +630,313 @@ class AdminDashboardScreen extends StatelessWidget {
 
     final titleCtrl = TextEditingController(text: 'Chương ${story.chapters.length + 1}: ');
     final contentCtrl = TextEditingController();
+    bool isSaving = false;
+    bool isImporting = false;
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('${globalAppState.t('add_chapter')}: ${story.title}'),
-        content: SizedBox(
-          width: 550,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(controller: titleCtrl, decoration: InputDecoration(labelText: globalAppState.t('chapter_title'), border: const OutlineInputBorder())),
-              const SizedBox(height: 10),
-              TextField(controller: contentCtrl, maxLines: 6, decoration: InputDecoration(labelText: globalAppState.t('chapter_content'), border: const OutlineInputBorder())),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(globalAppState.t('cancel'))),
-          FilledButton(
-            onPressed: () {
-              if (titleCtrl.text.isNotEmpty && contentCtrl.text.isNotEmpty) {
-                globalAppState.addChapterToStory(
-                  story.id,
-                  titleCtrl.text.trim(),
-                  content: contentCtrl.text.trim(),
-                );
-                Navigator.pop(ctx);
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (dialogCtx, setDialogState) {
+          final wordsCount = contentCtrl.text.trim().isEmpty
+              ? 0
+              : contentCtrl.text.trim().split(RegExp(r'\s+')).length;
+          final charsCount = contentCtrl.text.length;
+
+          Future<void> importFromTxt() async {
+            final picker = ImagePicker();
+            final file = await picker.pickMedia();
+            if (file == null) return;
+
+            setDialogState(() => isImporting = true);
+            try {
+              final bytes = await file.readAsBytes();
+              String rawText;
+              try {
+                rawText = utf8.decode(bytes);
+              } catch (_) {
+                rawText = latin1.decode(bytes);
               }
-            },
-            child: Text(globalAppState.t('publish_chapter')),
-          ),
-        ],
+
+              final parsedChapters = NovelParser.parseTxtFile(rawText);
+
+              if (parsedChapters.isEmpty) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Không tìm thấy nội dung chương hợp lệ trong file!'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                }
+                return;
+              }
+
+              if (parsedChapters.length > 1) {
+                if (!dialogCtx.mounted) return;
+                final confirm = await showDialog<bool>(
+                  context: dialogCtx,
+                  builder: (confirmCtx) => AlertDialog(
+                    backgroundColor: const Color(0xFF1E1E26),
+                    title: Text('Đã nhận diện được ${parsedChapters.length} chương!'),
+                    content: SizedBox(
+                      width: 500,
+                      height: 320,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Hệ thống sẽ tự động tạo và lưu danh sách các chương sau vào truyện:',
+                            style: TextStyle(fontSize: 13, color: Colors.grey),
+                          ),
+                          const SizedBox(height: 10),
+                          Expanded(
+                            child: ListView.separated(
+                              itemCount: parsedChapters.length,
+                              separatorBuilder: (_, __) => const Divider(height: 1),
+                              itemBuilder: (_, idx) {
+                                final item = parsedChapters[idx];
+                                return ListTile(
+                                  dense: true,
+                                  leading: CircleAvatar(
+                                    radius: 12,
+                                    child: Text('${idx + 1}', style: const TextStyle(fontSize: 10)),
+                                  ),
+                                  title: Text(item.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                                  subtitle: Text('${item.content.length} ký tự', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(confirmCtx, false), child: const Text('Hủy')),
+                      FilledButton(
+                        style: FilledButton.styleFrom(backgroundColor: Colors.deepPurple),
+                        onPressed: () => Navigator.pop(confirmCtx, true),
+                        child: const Text('Xác nhận nạp tất cả chương'),
+                      ),
+                    ],
+                  ),
+                );
+
+                if (confirm == true) {
+                  setDialogState(() => isSaving = true);
+                  for (final ch in parsedChapters) {
+                    await globalAppState.addChapterToStory(story.id, ch.title, content: ch.content);
+                  }
+                  if (context.mounted) {
+                    Navigator.pop(ctx);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Đã thêm thành công ${parsedChapters.length} chương vào truyện!'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }
+                }
+              } else {
+                titleCtrl.text = parsedChapters.first.title;
+                contentCtrl.text = parsedChapters.first.content;
+              }
+            } catch (e) {
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Lỗi khi đọc file: $e'), backgroundColor: Colors.redAccent),
+                );
+              }
+            } finally {
+              if (dialogCtx.mounted) {
+                setDialogState(() {
+                  isImporting = false;
+                  isSaving = false;
+                });
+              }
+            }
+          }
+
+          return Dialog(
+            insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+            backgroundColor: const Color(0xFF1E1E26),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            child: Container(
+              width: MediaQuery.of(context).size.width > 1200 ? 1150 : double.infinity,
+              height: MediaQuery.of(context).size.height * 0.9,
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${globalAppState.t('add_chapter')}: ${story.title}',
+                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 2),
+                            const Text(
+                              'Admin Novel Chapter Studio Editor',
+                              style: TextStyle(color: Colors.grey, fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: (isSaving || isImporting) ? null : () => Navigator.pop(ctx),
+                      ),
+                    ],
+                  ),
+                  const Divider(height: 20),
+
+                  TextField(
+                    controller: titleCtrl,
+                    enabled: !isSaving && !isImporting,
+                    decoration: InputDecoration(
+                      labelText: globalAppState.t('chapter_title'),
+                      prefixIcon: const Icon(Icons.title),
+                      border: const OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.black38,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: Colors.white10),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.text_fields, size: 14, color: Colors.deepPurpleAccent),
+                            const SizedBox(width: 6),
+                            Text(
+                              '$charsCount ký tự • $wordsCount từ',
+                              style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w500),
+                            ),
+                          ],
+                        ),
+                      ),
+                      OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.tealAccent,
+                          side: const BorderSide(color: Colors.tealAccent),
+                        ),
+                        onPressed: (isSaving || isImporting) ? null : importFromTxt,
+                        icon: isImporting
+                            ? const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.tealAccent),
+                              )
+                            : const Icon(Icons.upload_file, size: 16),
+                        label: Text(isImporting ? 'Đang phân tích file...' : 'Nhập tự động từ file .txt'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+
+                  Expanded(
+                    child: TextField(
+                      controller: contentCtrl,
+                      enabled: !isSaving && !isImporting,
+                      maxLines: null,
+                      expands: true,
+                      textAlignVertical: TextAlignVertical.top,
+                      keyboardType: TextInputType.multiline,
+                      style: const TextStyle(fontSize: 15, height: 1.6),
+                      decoration: const InputDecoration(
+                        hintText: 'Nhập hoặc dán nội dung văn bản của chương vào đây, hoặc nhấn nút "Nhập tự động từ file .txt" ở trên...',
+                        border: OutlineInputBorder(),
+                        alignLabelWithHint: true,
+                        contentPadding: EdgeInsets.all(16),
+                      ),
+                      onChanged: (_) => setDialogState(() {}),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: (isSaving || isImporting) ? null : () => Navigator.pop(ctx),
+                        child: Text(globalAppState.t('cancel')),
+                      ),
+                      const SizedBox(width: 10),
+                      FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                          backgroundColor: Colors.deepPurple,
+                        ),
+                        onPressed: (isSaving || isImporting)
+                            ? null
+                            : () async {
+                                final title = titleCtrl.text.trim();
+                                final content = contentCtrl.text.trim();
+
+                                if (title.isNotEmpty && content.isNotEmpty) {
+                                  setDialogState(() => isSaving = true);
+                                  try {
+                                    await globalAppState.addChapterToStory(
+                                      story.id,
+                                      title,
+                                      content: content,
+                                    );
+                                    if (context.mounted) {
+                                      Navigator.pop(ctx);
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Đã đăng chương mới thành công!'),
+                                          backgroundColor: Colors.green,
+                                        ),
+                                      );
+                                    }
+                                  } catch (e) {
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text('Lỗi khi đăng chương: $e'),
+                                          backgroundColor: Colors.redAccent,
+                                        ),
+                                      );
+                                    }
+                                  } finally {
+                                    if (dialogCtx.mounted) {
+                                      setDialogState(() => isSaving = false);
+                                    }
+                                  }
+                                }
+                              },
+                        icon: isSaving
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              )
+                            : const Icon(Icons.send, size: 16),
+                        label: Text(isSaving ? 'Đang lưu...' : globalAppState.t('publish_chapter')),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }

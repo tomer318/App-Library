@@ -88,6 +88,13 @@ class AppState extends ChangeNotifier {
     return stories.where((s) => s.creatorId == currentUser!.id).toList();
   }
 
+  // Lấy toàn bộ bình luận của một bộ truyện, sắp xếp theo số lượt like giảm dần
+  List<Comment> getTopCommentsForStory(String storyId) {
+    final list = allComments.where((c) => c.storyId == storyId).toList();
+    list.sort((a, b) => b.likedUsernames.length.compareTo(a.likedUsernames.length));
+    return list;
+  }
+
   Future<void> _loadFromStorage() async {
     final prefs = await SharedPreferences.getInstance();
 
@@ -113,14 +120,6 @@ class AppState extends ChangeNotifier {
       debugPrint('Lỗi tải phiên đăng nhập Supabase Auth: $e');
     }
 
-    // Tải và gán ratings từ Cloud vào các truyện
-    final cloudRatings = await SupabaseService.fetchAllRatings();
-    for (var s in stories) {
-      if (cloudRatings.containsKey(s.id)) {
-        s.ratings = cloudRatings[s.id]!;
-      }
-    }
-
     // 3. TẢI DỮ LIỆU TỪ SUPABASE CLOUD
     try {
       // Tải danh sách User từ Supabase
@@ -135,18 +134,11 @@ class AppState extends ChangeNotifier {
         ];
       }
 
-      // Tải danh sách Truyện từ Supabase trước
+      // Tải danh sách Truyện thực tế từ Supabase (không tự nạp truyện mẫu)
       final cloudStories = await SupabaseService.fetchStories();
-      if (cloudStories.isNotEmpty) {
-        stories = cloudStories;
-      } else {
-        stories = _getInitialStories();
-        for (var s in stories) {
-          await SupabaseService.saveStory(s, isNew: true);
-        }
-      }
+      stories = cloudStories;
 
-      // === NẠP RATINGS TỪ CLOUD (ĐẶT SAU KHI ĐÃ CÓ STORIES) ===
+      // NẠP RATINGS TỪ CLOUD (ĐẶT SAU KHI ĐÃ CÓ STORIES)
       try {
         final cloudRatings = await SupabaseService.fetchAllRatings();
         for (var s in stories) {
@@ -159,10 +151,7 @@ class AppState extends ChangeNotifier {
       }
 
     } catch (e) {
-      debugPrint('Lỗi kết nối Supabase, chuyển sang chế độ dự phòng cục bộ: $e');
-      if (stories.isEmpty) {
-        stories = _getInitialStories();
-      }
+      debugPrint('Lỗi kết nối Supabase: $e');
     }
 
     // Tải bình luận từ Cloud
@@ -235,33 +224,33 @@ class AppState extends ChangeNotifier {
     await prefs.setString('allComments', jsonEncode(allComments.map((c) => c.toJson()).toList()));
   }
 
-  // BỘ LỌC TÌM KIẾM NÂNG CAO
+  // GETTER LỌC DANH SÁCH TRUYỆN HIỂN THỊ
   List<Story> get filteredStories {
-    final list = stories.where((s) {
-      final matchesSearch = s.title.toLowerCase().contains(searchQuery.toLowerCase()) ||
-          s.author.toLowerCase().contains(searchQuery.toLowerCase());
-      final matchesAuthor = filterAuthor.isEmpty || s.author.toLowerCase().contains(filterAuthor.toLowerCase());
-      
-      // Lọc đa tag: Truyện phải chứa TẤT CẢ các tag đang được chọn
-      final matchesTags = selectedTags.isEmpty || selectedTags.every((tag) => s.tags.contains(tag));
-      
-      final matchesYear = filterYear == null || s.releaseYear == filterYear;
-      final matchesStatus = filterStatus == 'Tất cả' || s.status == filterStatus;
-      final matchesType = selectedType == 'all' || s.type == selectedType;
-      final matchesLang = storyLanguageFilter == 'all' || s.language == storyLanguageFilter;
+    return stories.where((story) {
+      // Ẩn truyện nếu trạng thái là Tạm ẩn/hidden (ngoại trừ khi admin hoặc tác giả đang xem)
+      final isHidden = story.status == 'Tạm ẩn' || story.status == 'hidden';
+      final canViewHidden = currentUser?.role == 'admin' || (currentUser != null && story.creatorId == currentUser?.id);
+      if (isHidden && !canViewHidden) return false;
 
-      return matchesSearch && matchesAuthor && matchesTags && matchesYear && matchesStatus && matchesType && matchesLang;
+      // Tìm kiếm theo từ khóa
+      if (searchQuery.isNotEmpty) {
+        final q = searchQuery.toLowerCase();
+        final matchTitle = story.title.toLowerCase().contains(q);
+        final matchAuthor = story.author.toLowerCase().contains(q);
+        if (!matchTitle && !matchAuthor) return false;
+      }
+
+      // Lọc theo loại truyện (Novel / Comic)
+      if (selectedType != 'all' && story.type != selectedType) return false;
+
+      // Lọc theo ngôn ngữ
+      if (storyLanguageFilter != 'all' && story.language != storyLanguageFilter) return false;
+
+      // Lọc theo thể loại Tags
+      if (selectedTags.isNotEmpty && !selectedTags.any((t) => story.tags.contains(t))) return false;
+
+      return true;
     }).toList();
-
-    if (sortBy == 'Lượt xem') {
-      list.sort((a, b) => b.viewCount.compareTo(a.viewCount));
-    } else if (sortBy == 'Điểm đánh giá') {
-      list.sort((a, b) => b.averageRating.compareTo(a.averageRating));
-    } else {
-      list.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-    }
-
-    return list;
   }
 
   void toggleTagFilter(String tag) {
@@ -395,7 +384,6 @@ class AppState extends ChangeNotifier {
 
   Future<String?> login(String emailOrUsername, String password) async {
     try {
-      // Hỗ trợ nhập email trực tiếp hoặc username (nếu là username ta ghép domain local)
       String email = emailOrUsername.trim();
       if (!email.contains('@')) {
         email = '${email.toLowerCase()}@gmail.com';
@@ -407,7 +395,6 @@ class AppState extends ChangeNotifier {
       );
 
       if (res.user != null) {
-        // Lấy profile từ bảng profiles (đã được tạo bởi trigger)
         final profile = await SupabaseService.getCurrentProfile();
         currentUser = profile ?? AppUser(
           id: res.user!.id,
@@ -502,7 +489,6 @@ class AppState extends ChangeNotifier {
       _saveUsers();
       notifyListeners();
 
-      // Đồng bộ lên Supabase Cloud
       await SupabaseService.updateUserRole(userId: currentUser!.id, role: 'author');
     }
   }
@@ -516,7 +502,6 @@ class AppState extends ChangeNotifier {
       _saveUsers();
       notifyListeners();
 
-      // Đồng bộ lên Supabase Cloud
       await SupabaseService.updateProfile(
         userId: currentUser!.id,
         username: newName,
@@ -635,15 +620,17 @@ class AppState extends ChangeNotifier {
     _saveStories();
   }
 
-  Future<void> updateStory(String id, String title, String author, List<String> tags, int year, String status, String cover, String desc) async {
+  Future<void> updateStory(String id, String title, String author, List<String> tags, int year, String status, String cover, String desc, {String? type, String? language}) async {
     final s = stories.firstWhere((element) => element.id == id);
     s.title = title;
     s.author = author;
     s.tags = tags;
     s.releaseYear = year;
     s.status = status;
-    s.coverUrl = cover; // <-- Đảm bảo dòng này gán đúng cover
+    s.coverUrl = cover;
     s.description = desc;
+    if (type != null) s.type = type;
+    if (language != null) s.language = language;
     s.updatedAt = DateTime.now();
     notifyListeners();
 
@@ -678,7 +665,6 @@ class AppState extends ChangeNotifier {
       _saveStories();
       notifyListeners();
 
-      // Đồng bộ trực tiếp lên Supabase Cloud Database
       await SupabaseService.updateChapter(
         storyId: storyId,
         chapterIndex: chapIndex,
@@ -689,23 +675,37 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<void> deleteChapter(String storyId, int chapIndex) async {
-    final s = stories.firstWhere((element) => element.id == storyId);
-    if (chapIndex >= 0 && chapIndex < s.chapters.length) {
-      s.chapters.removeAt(chapIndex);
-      s.updatedAt = DateTime.now();
-      _saveStories();
-      notifyListeners();
+  Future<void> deleteChapter(String storyId, int chapterIndex) async {
+    final storyIndex = stories.indexWhere((s) => s.id == storyId);
+    if (storyIndex == -1) return;
 
-      // Đồng bộ xóa trên Supabase Cloud Database
-      await SupabaseService.deleteChapter(
-        storyId: storyId,
-        chapterIndex: chapIndex,
-      );
-    }
+    final story = stories[storyIndex];
+    if (chapterIndex < 0 || chapterIndex >= story.chapters.length) return;
+
+    final chapTitle = story.chapters[chapterIndex].title;
+    final storyTitle = story.title;
+    final isComic = story.type == 'comic';
+
+    // Xóa trong bộ nhớ tạm
+    story.chapters.removeAt(chapterIndex);
+    notifyListeners();
+
+    // Gọi xóa trên Supabase DB kèm dọn Storage nếu là truyện tranh
+    await SupabaseService.deleteChapter(
+      storyId: storyId,
+      chapterIndex: chapterIndex,
+      storyTitle: isComic ? storyTitle : '',
+      chapterTitle: isComic ? chapTitle : '',
+    );
+
+    _saveStories();
   }
 
   Future<void> removeStory(String storyId) async {
+    // Lấy tiêu đề truyện trước khi xóa khỏi danh sách
+    final storyIndex = stories.indexWhere((s) => s.id == storyId);
+    final storyTitle = storyIndex != -1 ? stories[storyIndex].title : '';
+
     stories.removeWhere((s) => s.id == storyId);
     for (var favSet in userFavorites.values) {
       favSet.remove(storyId);
@@ -715,10 +715,29 @@ class AppState extends ChangeNotifier {
     }
     notifyListeners();
 
-    await SupabaseService.deleteStory(storyId);
+    // Gọi xóa trên database kèm dọn dẹp folder Storage
+    await SupabaseService.deleteStory(storyId, storyTitle: storyTitle);
     _saveStories();
     _saveFavorites();
     _saveHistory();
+  }
+
+  Future<void> updateStoryStatus(String storyId, String newStatus) async {
+    final idx = stories.indexWhere((s) => s.id == storyId);
+    if (idx == -1) return;
+
+    stories[idx].status = newStatus;
+    notifyListeners();
+
+    try {
+      await SupabaseService.client
+          .from('stories')
+          .update({'status': newStatus, 'updated_at': DateTime.now().toIso8601String()})
+          .eq('id', storyId);
+      _saveStories();
+    } catch (e) {
+      debugPrint('Lỗi cập nhật trạng thái truyện: $e');
+    }
   }
 
   void deleteUser(String userId) {
@@ -759,7 +778,6 @@ class AppState extends ChangeNotifier {
       'empty_history': {'vi': 'Bạn chưa đọc truyện nào gần đây.', 'en': 'No reading history.'},
       'read_now': {'vi': 'Đọc Từ Đầu', 'en': 'Read First'},
       'continue_reading': {'vi': 'Đọc Tiếp', 'en': 'Continue'},
-      // Profile & System
       'system_options': {'vi': 'Tùy Chọn Hệ Thống', 'en': 'System Preferences'},
       'logout_account': {'vi': 'Đăng xuất khỏi tài khoản', 'en': 'Log out of account'},
       'saved_stories': {'vi': 'Truyện đã lưu', 'en': 'Saved Stories'},
@@ -786,7 +804,6 @@ class AppState extends ChangeNotifier {
         'en': 'Library and reading history are for members only.\nPlease log in to bookmark and track your favorites!'
       },
       'login_now': {'vi': 'Đăng Nhập Ngay', 'en': 'Log In Now'},
-      // Advanced Search Dialog
       'adv_search_title': {'vi': 'Bộ Lọc & Tìm Kiếm Nâng Cao', 'en': 'Advanced Search & Filters'},
       'status': {'vi': 'Tình trạng', 'en': 'Status'},
       'all_status': {'vi': 'Tất cả tình trạng', 'en': 'All Statuses'},
@@ -798,7 +815,6 @@ class AppState extends ChangeNotifier {
       'sort_rating': {'vi': 'Điểm đánh giá cao nhất', 'en': 'Highest Rated'},
       'reset_default': {'vi': 'Đặt lại mặc định', 'en': 'Reset Default'},
       'apply_filter': {'vi': 'Áp Dụng Bộ Lọc', 'en': 'Apply Filter'},
-      // Dialogs & Actions
       'manage_chapters': {'vi': 'Quản lý các chap', 'en': 'Manage Chapters'},
       'add_chapter': {'vi': 'Thêm chương mới', 'en': 'Add Chapter'},
       'edit_story': {'vi': 'Sửa thông tin truyện', 'en': 'Edit Story'},
@@ -818,19 +834,16 @@ class AppState extends ChangeNotifier {
       'page_list': {'vi': 'Danh sách trang', 'en': 'Page List'},
       'clear_all': {'vi': 'Xóa tất cả', 'en': 'Clear All'},
       'preview_screen': {'vi': 'Màn Hình Xem Trước (Preview Cuộn Dọc)', 'en': 'Live Vertical Preview'},
-      // Profile edit dialog
       'edit_profile_title': {'vi': 'Chỉnh sửa thông tin cá nhân', 'en': 'Edit Profile Information'},
       'display_name': {'vi': 'Tên hiển thị', 'en': 'Display Name'},
       'bio_label': {'vi': 'Giới thiệu bản thân (Bio)', 'en': 'Biography (Bio)'},
       'save': {'vi': 'Lưu', 'en': 'Save'},
-      // Chapter Manager
       'edit_chapter_title': {'vi': 'Sửa chương', 'en': 'Edit Chapter'},
       'edit_chapter_tooltip': {'vi': 'Sửa chương này', 'en': 'Edit this chapter'},
       'delete_chapter_tooltip': {'vi': 'Xóa chương này', 'en': 'Delete this chapter'},
       'no_chapters_yet': {'vi': 'Truyện này chưa có chương nào.', 'en': 'No chapters available yet.'},
       'page_count_suffix': {'vi': 'trang ảnh', 'en': 'pages'},
       'char_count_suffix': {'vi': 'ký tự', 'en': 'characters'},
-      // Comic editor
       'edit_comic_prefix': {'vi': 'Chỉnh Sửa', 'en': 'Edit'},
       'drag_drop_hint': {'vi': 'Kéo giữ icon ☰ để đổi thứ tự trang', 'en': 'Drag ☰ icon to reorder pages'},
       'device_image_label': {'vi': 'Ảnh từ thiết bị', 'en': 'Device image'},
@@ -840,7 +853,6 @@ class AppState extends ChangeNotifier {
       'no_preview_images': {'vi': 'Chưa có ảnh để xem trước', 'en': 'No preview available'},
       'page_number_prefix': {'vi': 'Trang', 'en': 'Page'},
       'alert_add_least_one': {'vi': 'Vui lòng thêm ít nhất 1 trang ảnh trước khi lưu!', 'en': 'Please add at least 1 image page!'},
-      // Settings dialog
       'settings_title': {'vi': 'Cài Đặt Hệ Thống', 'en': 'System Settings'},
       'dark_mode_desc': {'vi': 'Bật chế độ dịu mắt khi đọc ban đêm', 'en': 'Comfortable viewing in low-light'},
       'font_family_label': {'vi': 'Kiểu phông chữ đọc', 'en': 'Reader Font Family'},
@@ -856,7 +868,6 @@ class AppState extends ChangeNotifier {
       'role': {'vi': 'Vai trò', 'en': 'Role'},
       'admin_role': {'vi': 'Quản trị viên', 'en': 'Administrator'},
       'reader_role': {'vi': 'Độc giả', 'en': 'Reader'},
-      // Admin Dashboard
       'admin_dash_title': {'vi': 'Bảng Điều Khiển Quản Trị', 'en': 'Admin Dashboard'},
       'total_stories': {'vi': 'Tổng Truyện', 'en': 'Total Stories'},
       'total_chapters': {'vi': 'Tổng Chương', 'en': 'Total Chapters'},
@@ -870,11 +881,56 @@ class AppState extends ChangeNotifier {
       'add_new_story': {'vi': 'Thêm Truyện Mới', 'en': 'Add New Story'},
       'studio_title': {'vi': 'Creator Studio', 'en': 'Creator Studio'},
       'studio_subtitle': {'vi': 'Không gian sáng tác dành riêng cho Tác giả / Dịch giả', 'en': 'Creative space exclusively for Authors & Translators'},
+      
+      // Story Detail & Reading Screen
+      'release_year': {'vi': 'Năm phát hành', 'en': 'Release Year'},
+      'synopsis': {'vi': 'Tóm Tắt Nội Dung', 'en': 'Synopsis'},
+      'no_description': {'vi': 'Chưa có tóm tắt chi tiết cho truyện này.', 'en': 'No description available for this story.'},
+      'chapter_list': {'vi': 'Danh Sách Chương', 'en': 'Chapter List'},
+      'no_chapters_update': {'vi': 'Truyện này hiện chưa có chương nào được cập nhật.', 'en': 'No chapters have been updated yet.'},
+      'saved': {'vi': 'ĐÃ LƯU', 'en': 'BOOKMARKED'},
+      'save_story': {'vi': 'LƯU TRUYỆN', 'en': 'BOOKMARK'},
+      'reading_badge': {'vi': 'ĐANG ĐỌC', 'en': 'READING'},
+      'read_continue_prefix': {'vi': 'ĐỌC TIẾP (CHAP', 'en': 'CONTINUE (CH.'},
+      'comments_suffix': {'vi': 'bình luận', 'en': 'comments'},
+      'votes_suffix': {'vi': 'đánh giá', 'en': 'votes'},
+      'table_of_contents': {'vi': 'Mục Lục Chương', 'en': 'Table of Contents'},
+      'story_info_and_ratings': {'vi': 'Thông tin truyện & đánh giá', 'en': 'Story Info & Ratings'},
+      'auto_scroll_speed': {'vi': 'Tốc độ cuộn:', 'en': 'Scroll speed:'},
+      'prev_chap': {'vi': 'Chap trước', 'en': 'Prev Chap'},
+      'next_chap': {'vi': 'Chap sau', 'en': 'Next Chap'},
+      'paper_light': {'vi': 'Giấy Trắng', 'en': 'White Theme'},
+      'paper_sepia': {'vi': 'Giấy Vàng Sepia', 'en': 'Sepia Theme'},
+      'paper_dark': {'vi': 'Giấy Đen Dark', 'en': 'Dark Theme'},
+      'read_end_chap_prefix': {'vi': 'Bạn đã đọc hết', 'en': 'You have finished reading'},
+      'read_latest_chap': {'vi': 'Bạn đã đọc đến chương mới nhất!', 'en': 'You have reached the latest chapter!'},
+      'read_next_chap': {'vi': 'Đọc tiếp', 'en': 'Read next'},
+      'back_to_info': {'vi': 'Quay về trang thông tin truyện', 'en': 'Back to Story Info'},
+      'read_all_chapters': {'vi': '🎉 Bạn đã đọc hết các chương hiện có!', 'en': '🎉 You have read all available chapters!'},
+      'comments_title': {'vi': 'Bình luận', 'en': 'Comments'},
+      'no_comments_yet': {'vi': 'Chưa có bình luận nào. Hãy là người đầu tiên!', 'en': 'No comments yet. Be the first to comment!'},
+      'write_comment_hint': {'vi': 'Viết bình luận cảm nghĩ...', 'en': 'Write your comment...'},
+      'like_tooltip': {'vi': 'Thích', 'en': 'Like'},
+      'report_tooltip': {'vi': 'Báo cáo vi phạm', 'en': 'Report'},
+      'report_sent': {'vi': 'Đã gửi báo cáo vi phạm đến quản trị viên!', 'en': 'Report has been sent to admin!'},
+      'cannot_load_image': {'vi': 'Không thể tải ảnh trang', 'en': 'Failed to load page'},
+      'rating_dialog_title': {'vi': 'Đánh giá truyện', 'en': 'Rate this story'},
+      'rating_stars_suffix': {'vi': 'Sao', 'en': 'Stars'},
+      'send_rating': {'vi': 'Gửi đánh giá', 'en': 'Submit Rating'},
+      'rating_success': {'vi': 'Bạn đã đánh giá', 'en': 'You have rated'},
+      'rating_require_login': {'vi': 'Vui lòng đăng nhập để đánh giá truyện!', 'en': 'Please log in to rate this story!'},
+      'bookmark_require_login': {'vi': 'Vui lòng đăng nhập để lưu truyện vào Tủ Sách cá nhân!', 'en': 'Please log in to bookmark stories!'},
+      'login_require_title': {'vi': 'Yêu cầu đăng nhập', 'en': 'Login Required'},
+      'no_stories_found': {'vi': 'Không tìm thấy truyện phù hợp.', 'en': 'No matching stories found.'},
+      'reset_filters': {'vi': 'Đặt lại bộ lọc', 'en': 'Reset filters'},
+      'chaps_count_suffix': {'vi': 'chap', 'en': 'chaps'},
+      'all_story_comments': {'vi': 'Bình Luận Nổi Bật Của Bộ Truyện', 'en': 'Top Story Comments'},
+      'no_comments_in_story': {'vi': 'Chưa có bình luận nào cho bộ truyện này.', 'en': 'No comments for this story yet.'},
+      'likes': {'vi': 'Thích', 'en': 'Likes'},
     };
     return dict[key]?[language] ?? key;
   }
 
-  // DỊCH TÊN THỂ LOẠI THEO NGÔN NGỮ ĐANG CHỌN
   String tGenre(String g) {
     if (g == 'Tất cả') return t('all');
     if (language == 'en') {
@@ -891,105 +947,7 @@ class AppState extends ChangeNotifier {
   }
 
   static List<Story> _getInitialStories() {
-    return [
-      Story(
-        id: '1',
-        title: 'Hành Trình Về Phương Đông',
-        author: 'Baird T. Spalding',
-        tags: ['Tâm linh', 'Viễn tưởng'],
-        releaseYear: 2018,
-        status: 'Đã hoàn thành',
-        type: 'novel',
-        creatorId: 'u_admin',
-        coverUrl: 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=400&q=80',
-        description: 'Cuốn sách ghi lại những trải nghiệm sâu sắc của đoàn thám hiểm Hoàng gia Anh tại vùng đất Ấn Độ huyền bí.',
-        viewCount: 1450,
-        ratings: [5, 5, 5, 4],
-        chapters: [
-          Chapter(title: 'Chương 1: Lời giới thiệu đoàn thám hiểm', content: 'Đoàn khảo cứu gồm các nhà khoa học...'),
-        ],
-      ),
-      Story(
-        id: '2',
-        title: 'Hiệp Khách Hành Giả',
-        author: 'Kim Dung',
-        tags: ['Kiếm hiệp'],
-        releaseYear: 1967,
-        status: 'Đang tiến hành',
-        type: 'novel',
-        creatorId: 'u_admin',
-        coverUrl: 'https://images.unsplash.com/photo-1512820790803-83ca734da794?w=400&q=80',
-        description: 'Chuyện về những hiệp sĩ giang hồ đầy phong trần, tình huynh đệ và những bí kíp võ học kinh thiên động địa.',
-        viewCount: 890,
-        ratings: [5, 4, 4],
-        chapters: [
-          Chapter(
-            title: 'Chương 1: Gió nổi chốn biên ải',
-            content: 'Gió tuyết gầm rú qua trập trùng rặng núi. Trong quán trọ nhỏ ven đường, đao kiếm xé toạc màn đêm tĩnh mịch...\n\nMột vị kiếm khách cô độc bước vào mang theo bí mật động trời.',
-          ),
-        ],
-      ),
-      Story(
-        id: '3',
-        title: 'Biên Niên Sử Vị Lai 2099',
-        author: 'Sci-Fi Studio',
-        tags: ['Viễn tưởng'],
-        releaseYear: 2019,
-        status: 'Đang tiến hành',
-        type: 'novel',
-        creatorId: 'u_admin',
-        coverUrl: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=400&q=80',
-        description: 'Thế giới năm 2099, nơi mạng nơ-ron và con người kết nối với nhau trong thành phố công nghệ ánh sáng.',
-        viewCount: 520,
-        ratings: [5, 5],
-        chapters: [
-          Chapter(
-            title: 'Chương 1: Kỷ nguyên Cybernetic',
-            content: 'Ánh sáng neon chiếu rọi qua những tầng mây bụi kim loại. Hệ thống máy chủ trung tâm phát đi thông điệp khởi động chu kỳ mới...',
-          ),
-        ],
-      ),
-      Story(
-        id: '4',
-        title: 'Solo Leveling: Thợ Săn Tối Thượng',
-        author: 'Chugong & DUBU',
-        tags: ['Hành động', 'Manhwa', 'Hệ thống'],
-        releaseYear: 2021,
-        type: 'comic',
-        status: 'Đang tiến hành',
-        creatorId: 'u_author',
-        coverUrl: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=400&q=80',
-        description: 'Thế giới xuất hiện những cánh cổng nối với hầm ngục quái vật. Thợ săn hạng E yếu nhất bắt đầu hành trình thăng cấp.',
-        viewCount: 3820,
-        ratings: [5, 5, 5, 5],
-        chapters: [
-          Chapter(title: 'Chương 1: Cửa Hầm Ngục Kép', imageUrls: [
-            'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=800&q=80',
-          ]),
-        ],
-      ),
-      Story(
-        id: '5',
-        title: 'The Cyberpunk Odyssey 2099',
-        author: 'Alexander Vance',
-        tags: ['Sci-Fi'],
-        releaseYear: 2019,
-        type: 'novel',
-        language: 'en',
-        status: 'Đang tiến hành',
-        creatorId: 'u_admin',
-        coverUrl: 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=400&q=80',
-        description: 'An epic cyberpunk journey across neon-lit megacities and neural cyberspace.',
-        viewCount: 2150,
-        ratings: [5, 5, 5],
-        chapters: [
-          Chapter(
-            title: 'Chapter 1: Neon Shadows',
-            content: 'The rain poured relentlessly over the towering skyscrapers of Neo-Veridia...\nA lone hacker prepared the ultimate breach.',
-          ),
-        ],
-      ),
-    ];
+    return [];
   }
 }
 

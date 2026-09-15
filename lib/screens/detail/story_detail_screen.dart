@@ -15,16 +15,16 @@ class StoryDetailScreen extends StatelessWidget {
       showDialog(
         context: context,
         builder: (_) => AlertDialog(
-          title: const Text('Yêu cầu đăng nhập'),
-          content: const Text('Vui lòng đăng nhập để lưu truyện vào Tủ Sách cá nhân!'),
+          title: Text(state.t('login_require_title')),
+          content: Text(state.t('bookmark_require_login')),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Hủy')),
+            TextButton(onPressed: () => Navigator.pop(context), child: Text(state.t('cancel'))),
             FilledButton(
               onPressed: () {
                 Navigator.pop(context);
                 showDialog(context: context, builder: (_) => const AuthDialog());
               },
-              child: const Text('Đăng Nhập'),
+              child: Text(state.t('login')),
             ),
           ],
         ),
@@ -35,10 +35,11 @@ class StoryDetailScreen extends StatelessWidget {
   }
 
   void _showRatingDialog(BuildContext context, Story currentStory) {
-    if (globalAppState.currentUser == null) {
+    final state = globalAppState;
+    if (state.currentUser == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Vui lòng đăng nhập để đánh giá truyện!'),
+        SnackBar(
+          content: Text(state.t('rating_require_login')),
           backgroundColor: Colors.orange,
         ),
       );
@@ -54,7 +55,7 @@ class StoryDetailScreen extends StatelessWidget {
           return AlertDialog(
             backgroundColor: const Color(0xFF1E1E26),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: const Text('Đánh giá truyện', textAlign: TextAlign.center),
+            title: Text(state.t('rating_dialog_title'), textAlign: TextAlign.center),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -82,7 +83,7 @@ class StoryDetailScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  '$selectedStars / 5 Sao',
+                  '$selectedStars / 5 ${state.t('rating_stars_suffix')}',
                   style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.amber),
                 ),
               ],
@@ -91,23 +92,23 @@ class StoryDetailScreen extends StatelessWidget {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx),
-                child: const Text('Hủy'),
+                child: Text(state.t('cancel')),
               ),
               FilledButton(
                 style: FilledButton.styleFrom(backgroundColor: Colors.deepPurple),
                 onPressed: () async {
-                  await globalAppState.rateStory(currentStory.id, selectedStars);
+                  await state.rateStory(currentStory.id, selectedStars);
                   if (context.mounted) {
                     Navigator.pop(ctx);
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text('Bạn đã đánh giá $selectedStars sao cho truyện!'),
+                        content: Text('${state.t('rating_success')} $selectedStars ${state.t('rating_stars_suffix')}!'),
                         backgroundColor: Colors.green,
                       ),
                     );
                   }
                 },
-                child: const Text('Gửi đánh giá'),
+                child: Text(state.t('send_rating')),
               ),
             ],
           );
@@ -140,7 +141,7 @@ class StoryDetailScreen extends StatelessWidget {
             leading: IconButton(
               icon: Container(
                 padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(color: Colors.black45, shape: BoxShape.circle),
+                decoration: const BoxDecoration(color: Colors.black45, shape: BoxShape.circle),
                 child: const Icon(Icons.arrow_back, color: Colors.white, size: 20),
               ),
               onPressed: () => Navigator.pop(context),
@@ -149,7 +150,7 @@ class StoryDetailScreen extends StatelessWidget {
               IconButton(
                 icon: Container(
                   padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(color: Colors.black45, shape: BoxShape.circle),
+                  decoration: const BoxDecoration(color: Colors.black45, shape: BoxShape.circle),
                   child: Icon(
                     isFav ? Icons.favorite : Icons.favorite_border,
                     color: isFav ? Colors.redAccent : Colors.white,
@@ -164,17 +165,13 @@ class StoryDetailScreen extends StatelessWidget {
           body: SingleChildScrollView(
             child: Column(
               children: [
-                // 1. HERO BANNER BLUR HEADER
                 Stack(
                   clipBehavior: Clip.none,
                   children: [
-                    // Ảnh nền làm mờ bao phủ
                     Container(
                       height: 380,
                       width: double.infinity,
-                      decoration: BoxDecoration(
-                        color: Colors.black,
-                      ),
+                      decoration: const BoxDecoration(color: Colors.black),
                       child: Stack(
                         fit: StackFit.expand,
                         children: [
@@ -190,7 +187,6 @@ class StoryDetailScreen extends StatelessWidget {
                               color: Colors.black.withValues(alpha: 0.72),
                             ),
                           ),
-                          // Gradient phủ tối dần xuống thân trang
                           Container(
                             decoration: BoxDecoration(
                               gradient: LinearGradient(
@@ -209,7 +205,6 @@ class StoryDetailScreen extends StatelessWidget {
                       ),
                     ),
 
-                    // Khối nội dung chính đè lên Hero
                     Center(
                       child: ConstrainedBox(
                         constraints: const BoxConstraints(maxWidth: 1000),
@@ -220,7 +215,6 @@ class StoryDetailScreen extends StatelessWidget {
                               Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  // Ảnh bìa chính thức
                                   Hero(
                                     tag: 'cover-${currentStory.id}',
                                     child: Container(
@@ -247,7 +241,6 @@ class StoryDetailScreen extends StatelessWidget {
                                   ),
                                   const SizedBox(width: 24),
 
-                                  // Cột thông tin truyện
                                   Expanded(
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -262,12 +255,11 @@ class StoryDetailScreen extends StatelessWidget {
                                         ),
                                         const SizedBox(height: 6),
                                         Text(
-                                          'Tác giả: ${currentStory.author}',
+                                          '${state.t('author')}: ${currentStory.author}',
                                           style: TextStyle(color: Colors.grey.shade300, fontSize: 14),
                                         ),
                                         const SizedBox(height: 10),
 
-                                        // Thay thế khối InkWell cũ bằng đoạn code bọc Wrap/FittedBox gọn gàng:
                                         InkWell(
                                           onTap: () => _showRatingDialog(context, currentStory),
                                           borderRadius: BorderRadius.circular(8),
@@ -293,7 +285,7 @@ class StoryDetailScreen extends StatelessWidget {
                                                   ),
                                                 ),
                                                 Text(
-                                                  '(${currentStory.ratings.length} vote)',
+                                                  '(${currentStory.ratings.length} ${state.t('votes_suffix')})',
                                                   style: TextStyle(color: Colors.grey.shade400, fontSize: 11),
                                                 ),
                                                 const Icon(Icons.edit_note, size: 15, color: Colors.amber),
@@ -304,24 +296,23 @@ class StoryDetailScreen extends StatelessWidget {
 
                                         const SizedBox(height: 14),
 
-                                        // Badge Meta (Năm, Số chương, Thể loại)
                                         Wrap(
                                           spacing: 8,
                                           runSpacing: 6,
                                           children: [
                                             _buildBadge(
                                               icon: Icons.calendar_today,
-                                              label: '${currentStory.releaseYear}',
+                                              label: '${state.t('release_year')}: ${currentStory.releaseYear}',
                                               color: Colors.blueGrey,
                                             ),
                                             _buildBadge(
                                               icon: Icons.library_books,
-                                              label: '${currentStory.chapters.length} chương',
+                                              label: '${currentStory.chapters.length} ${state.t('chapters')}',
                                               color: Colors.teal,
                                             ),
                                             _buildBadge(
                                               icon: currentStory.type == 'comic' ? Icons.photo_library : Icons.menu_book,
-                                              label: currentStory.type == 'comic' ? 'Manga / Comic' : 'Tiểu Thuyết',
+                                              label: currentStory.type == 'comic' ? state.t('manga') : state.t('novel'),
                                               color: Colors.purple,
                                             ),
                                           ],
@@ -329,7 +320,6 @@ class StoryDetailScreen extends StatelessWidget {
 
                                         const SizedBox(height: 10),
 
-                                        // Tags Thể Loại
                                         Wrap(
                                           spacing: 6,
                                           runSpacing: 6,
@@ -337,7 +327,7 @@ class StoryDetailScreen extends StatelessWidget {
                                             return ActionChip(
                                               visualDensity: VisualDensity.compact,
                                               avatar: const Icon(Icons.tag, size: 13, color: Colors.deepPurpleAccent),
-                                              label: Text(tag, style: const TextStyle(fontSize: 11)),
+                                              label: Text(state.tGenre(tag), style: const TextStyle(fontSize: 11)),
                                               onPressed: () {
                                                 state.setSingleTagFilter(tag);
                                                 Navigator.pop(context);
@@ -353,7 +343,6 @@ class StoryDetailScreen extends StatelessWidget {
 
                               const SizedBox(height: 20),
 
-                              // CỤM NÚT CALL-TO-ACTION (CTA)
                               Row(
                                 children: [
                                   Expanded(
@@ -365,9 +354,14 @@ class StoryDetailScreen extends StatelessWidget {
                                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                                       ),
                                       icon: const Icon(Icons.menu_book),
-                                      label: Text(
-                                        lastReadIndex != null ? 'ĐỌC TIẾP (CHAP ${lastReadIndex + 1})' : 'ĐỌC TỪ ĐẦU',
-                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                                      label: FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        child: Text(
+                                          lastReadIndex != null
+                                              ? '${state.t('read_continue_prefix')} ${lastReadIndex + 1})'
+                                              : state.t('read_now'),
+                                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                        ),
                                       ),
                                       onPressed: hasChapters
                                           ? () => Navigator.push(
@@ -387,7 +381,7 @@ class StoryDetailScreen extends StatelessWidget {
                                     flex: 1,
                                     child: OutlinedButton.icon(
                                       style: OutlinedButton.styleFrom(
-                                        padding: const EdgeInsets.symmetric(vertical: 16),
+                                        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
                                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                                         side: BorderSide(
                                           color: isFav ? Colors.redAccent : Colors.grey.shade600,
@@ -396,12 +390,17 @@ class StoryDetailScreen extends StatelessWidget {
                                       icon: Icon(
                                         isFav ? Icons.favorite : Icons.favorite_border,
                                         color: isFav ? Colors.redAccent : Colors.white,
+                                        size: 18,
                                       ),
-                                      label: Text(
-                                        isFav ? 'ĐÃ LƯU' : 'LƯU TRUYỆN',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          color: isFav ? Colors.redAccent : Colors.white,
+                                      label: FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        child: Text(
+                                          isFav ? state.t('saved') : state.t('save_story'),
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            color: isFav ? Colors.redAccent : Colors.white,
+                                            fontSize: 13,
+                                          ),
                                         ),
                                       ),
                                       onPressed: () => _onFavoritePressed(context, state),
@@ -417,7 +416,6 @@ class StoryDetailScreen extends StatelessWidget {
                   ],
                 ),
 
-                // 2. KHỐI THÂN TRANG (TÓM TẮT & DANH SÁCH CHƯƠNG)
                 Center(
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 1000),
@@ -426,7 +424,6 @@ class StoryDetailScreen extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Khối giới thiệu nội dung
                           Container(
                             width: double.infinity,
                             padding: const EdgeInsets.all(18),
@@ -438,17 +435,17 @@ class StoryDetailScreen extends StatelessWidget {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Row(
+                                Row(
                                   children: [
-                                    Icon(Icons.auto_stories, size: 18, color: Colors.deepPurpleAccent),
+                                    const Icon(Icons.auto_stories, size: 18, color: Colors.deepPurpleAccent),
                                     const SizedBox(width: 8),
-                                    Text('Tóm Tắt Nội Dung', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                    Text(state.t('synopsis'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                                   ],
                                 ),
                                 const SizedBox(height: 10),
                                 Text(
                                   currentStory.description.trim().isEmpty
-                                      ? 'Chưa có tóm tắt chi tiết cho truyện này.'
+                                      ? state.t('no_description')
                                       : currentStory.description,
                                   style: TextStyle(fontSize: 14, height: 1.6, color: Colors.grey.shade300),
                                 ),
@@ -458,7 +455,6 @@ class StoryDetailScreen extends StatelessWidget {
 
                           const SizedBox(height: 28),
 
-                          // Tiêu đề danh sách chương
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
@@ -466,7 +462,7 @@ class StoryDetailScreen extends StatelessWidget {
                                 children: [
                                   const Icon(Icons.format_list_bulleted, size: 20, color: Colors.deepPurpleAccent),
                                   const SizedBox(width: 8),
-                                  const Text('Danh Sách Chương', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                                  Text(state.t('chapter_list'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                                   const SizedBox(width: 8),
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -485,7 +481,6 @@ class StoryDetailScreen extends StatelessWidget {
                           ),
                           const SizedBox(height: 12),
 
-                          // Grid / List các chương
                           if (!hasChapters)
                             Container(
                               padding: const EdgeInsets.all(32),
@@ -494,8 +489,8 @@ class StoryDetailScreen extends StatelessWidget {
                                 color: const Color(0xFF1E1E26),
                                 borderRadius: BorderRadius.circular(12),
                               ),
-                              child: const Center(
-                                child: Text('Truyện này hiện chưa có chương nào được cập nhật.', style: TextStyle(color: Colors.grey)),
+                              child: Center(
+                                child: Text(state.t('no_chapters_update'), style: const TextStyle(color: Colors.grey)),
                               ),
                             )
                           else
@@ -546,7 +541,7 @@ class StoryDetailScreen extends StatelessWidget {
                                       children: [
                                         const Icon(Icons.chat_bubble_outline, size: 12, color: Colors.grey),
                                         const SizedBox(width: 4),
-                                        Text('$commentsCount bình luận', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                                        Text('$commentsCount ${state.t('comments_suffix')}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
                                         if (isCurrentReading) ...[
                                           const SizedBox(width: 12),
                                           Container(
@@ -555,7 +550,7 @@ class StoryDetailScreen extends StatelessWidget {
                                               color: Colors.deepPurple,
                                               borderRadius: BorderRadius.circular(4),
                                             ),
-                                            child: const Text('ĐANG ĐỌC', style: TextStyle(fontSize: 9, color: Colors.white, fontWeight: FontWeight.bold)),
+                                            child: Text(state.t('reading_badge'), style: const TextStyle(fontSize: 9, color: Colors.white, fontWeight: FontWeight.bold)),
                                           ),
                                         ],
                                       ],
@@ -571,6 +566,190 @@ class StoryDetailScreen extends StatelessWidget {
                                 );
                               },
                             ),
+
+                          const SizedBox(height: 32),
+
+                          // KHU VỰC BÌNH LUẬN NỔI BẬT CỦA BỘ TRUYỆN
+                          Row(
+                            children: [
+                              const Icon(Icons.forum_outlined, size: 20, color: Colors.deepPurpleAccent),
+                              const SizedBox(width: 8),
+                              Text(
+                                state.t('all_story_comments'),
+                                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                              ),
+                              const SizedBox(width: 8),
+                              Builder(
+                                builder: (_) {
+                                  final totalComments = state.getTopCommentsForStory(currentStory.id).length;
+                                  return Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.deepPurple.withValues(alpha: 0.2),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Text(
+                                      '$totalComments',
+                                      style: const TextStyle(
+                                        color: Colors.deepPurpleAccent,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+
+                          Builder(
+                            builder: (context) {
+                              final topComments = state.getTopCommentsForStory(currentStory.id);
+                              final currentUsername = state.currentUser?.username ?? (state.language == 'en' ? 'Guest' : 'Khách');
+
+                              if (topComments.isEmpty) {
+                                return Container(
+                                  padding: const EdgeInsets.all(24),
+                                  width: double.infinity,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF1E1E26),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: Colors.white10),
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      state.t('no_comments_in_story'),
+                                      style: const TextStyle(color: Colors.grey),
+                                    ),
+                                  ),
+                                );
+                              }
+
+                              return ListView.separated(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                itemCount: topComments.length,
+                                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                                itemBuilder: (ctx, idx) {
+                                  final comment = topComments[idx];
+                                  final isLiked = comment.likedUsernames.contains(currentUsername);
+
+                                  final chapTitle = (comment.chapterIndex >= 0 && comment.chapterIndex < currentStory.chapters.length)
+                                      ? currentStory.chapters[comment.chapterIndex].title
+                                      : 'Chap ${comment.chapterIndex + 1}';
+
+                                  return Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF1E1E26),
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(color: Colors.white10),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            CircleAvatar(
+                                              radius: 14,
+                                              backgroundColor: Colors.deepPurple,
+                                              child: Text(
+                                                comment.username.isNotEmpty ? comment.username[0].toUpperCase() : '?',
+                                                style: const TextStyle(fontSize: 12, color: Colors.white, fontWeight: FontWeight.bold),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: Wrap(
+                                                crossAxisAlignment: WrapCrossAlignment.center,
+                                                spacing: 8,
+                                                runSpacing: 4,
+                                                children: [
+                                                  Text(
+                                                    comment.username,
+                                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                                  ),
+                                                  InkWell(
+                                                    borderRadius: BorderRadius.circular(4),
+                                                    onTap: () => Navigator.push(
+                                                      context,
+                                                      MaterialPageRoute(
+                                                        builder: (_) => ReadingScreen(
+                                                          story: currentStory,
+                                                          initialChapterIndex: comment.chapterIndex,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    child: Container(
+                                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                      decoration: BoxDecoration(
+                                                        color: Colors.deepPurpleAccent.withValues(alpha: 0.15),
+                                                        borderRadius: BorderRadius.circular(4),
+                                                        border: Border.all(color: Colors.deepPurpleAccent.withValues(alpha: 0.4)),
+                                                      ),
+                                                      child: Row(
+                                                        mainAxisSize: MainAxisSize.min,
+                                                        children: [
+                                                          const Icon(Icons.menu_book, size: 11, color: Colors.deepPurpleAccent),
+                                                          const SizedBox(width: 4),
+                                                          Text(
+                                                            chapTitle,
+                                                            style: const TextStyle(
+                                                              fontSize: 11,
+                                                              color: Colors.deepPurpleAccent,
+                                                              fontWeight: FontWeight.w600,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            InkWell(
+                                              borderRadius: BorderRadius.circular(20),
+                                              onTap: () => state.toggleLikeComment(comment.id),
+                                              child: Padding(
+                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                child: Row(
+                                                  children: [
+                                                    Icon(
+                                                      isLiked ? Icons.thumb_up : Icons.thumb_up_alt_outlined,
+                                                      size: 16,
+                                                      color: isLiked ? Colors.blueAccent : Colors.grey,
+                                                    ),
+                                                    const SizedBox(width: 4),
+                                                    Text(
+                                                      '${comment.likedUsernames.length}',
+                                                      style: TextStyle(
+                                                        fontSize: 12,
+                                                        fontWeight: FontWeight.bold,
+                                                        color: isLiked ? Colors.blueAccent : Colors.grey,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Padding(
+                                          padding: const EdgeInsets.only(left: 36.0),
+                                          child: Text(
+                                            comment.content,
+                                            style: TextStyle(fontSize: 13, height: 1.4, color: Colors.grey.shade300),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              );
+                            },
+                          ),
 
                           const SizedBox(height: 40),
                         ],

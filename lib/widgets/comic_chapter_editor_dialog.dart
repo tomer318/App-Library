@@ -68,10 +68,19 @@ class _ComicChapterEditorDialogState extends State<ComicChapterEditorDialog> {
         });
 
         int completed = 0;
+        // Xác định thứ tự chương (nếu là tạo mới thì lấy tổng số chương hiện tại)
+        final chapOrder = widget.editChapterIndex ?? widget.story.chapters.length;
+        final chapTitle = titleCtrl.text.trim().isNotEmpty
+            ? titleCtrl.text.trim()
+            : 'Chap_${chapOrder + 1}';
+
         final uploadFutures = sortedList.map((file) async {
           final bytes = await file.readAsBytes();
           final url = await SupabaseService.uploadChapterImage(
             storyId: widget.story.id,
+            storyTitle: widget.story.title,
+            chapterOrder: chapOrder,
+            chapterTitle: chapTitle,
             bytes: bytes,
             fileName: file.name,
           );
